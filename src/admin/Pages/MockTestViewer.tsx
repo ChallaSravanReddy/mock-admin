@@ -650,8 +650,15 @@ const InductiveQuestion: React.FC<{ q: any; answer: string[]; onAnswer: (a: stri
 const MotionQuestion: React.FC<{ q: any; answer?: any; onAnswer?: (a: any) => void }> = ({ q, answer, onAnswer }) => {
   const [activeLevelIdx, setActiveLevelIdx] = useState(0);
   const levels = q.levelsData || [];
-  const normalizedLevels = levels.map((lvl: any, index: number) => ({
-    id: lvl.id || `lvl-${index}`,
+  const normalizedLevels: Array<{
+    id: string;
+    rows: number;
+    cols: number;
+    grid: any[];
+    maxMoves: number;
+    label: string;
+  }> = levels.map((lvl: any, index: number) => ({
+    id: String(lvl.id || `lvl-${index}`),
     rows: lvl.rows || 6,
     cols: lvl.cols || 4,
     grid: lvl.grid || [],
@@ -749,14 +756,14 @@ const MotionQuestion: React.FC<{ q: any; answer?: any; onAnswer?: (a: any) => vo
           
           if (canBallMoveToHole) {
             setIsSolved(true);
-            const levelId = activeLevel.id;
-            const updatedSolved = {
+            const levelId = String(activeLevel.id);
+            const updatedSolved: Record<string, { solved: boolean; moves: number }> = {
               ...solvedLevels,
               [levelId]: { solved: true, moves: movesCount + 1 }
             };
             setSolvedLevels(updatedSolved);
 
-            const allSolved = normalizedLevels.every((lvl: any) => updatedSolved[lvl.id]?.solved);
+            const allSolved = normalizedLevels.every((lvl) => updatedSolved[lvl.id]?.solved);
 
             if (onAnswer) {
               onAnswer({
@@ -809,12 +816,12 @@ const MotionQuestion: React.FC<{ q: any; answer?: any; onAnswer?: (a: any) => vo
     setIsSolved(false);
     setHistory([]);
 
-    const updatedSolved = { ...solvedLevels };
-    delete updatedSolved[activeLevel.id];
+    const updatedSolved: Record<string, { solved: boolean; moves: number }> = { ...solvedLevels };
+    delete updatedSolved[String(activeLevel.id)];
     setSolvedLevels(updatedSolved);
 
     if (onAnswer) {
-      const allSolved = normalizedLevels.every((lvl: any) => updatedSolved[lvl.id]?.solved);
+      const allSolved = normalizedLevels.every((lvl) => updatedSolved[lvl.id]?.solved);
       if (Object.keys(updatedSolved).length === 0) {
         onAnswer(undefined);
       } else {
