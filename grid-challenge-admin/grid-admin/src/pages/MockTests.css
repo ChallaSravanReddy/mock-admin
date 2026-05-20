@@ -1,0 +1,84 @@
+.mock-list { padding: 28px 32px; }
+.mock-list-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 22px; }
+
+.mock-test-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+
+.mock-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px;
+  cursor: pointer; transition: all 0.15s;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.mock-card:hover { border-color: var(--blue2); transform: translateY(-2px); box-shadow: 0 4px 20px rgba(59,111,212,0.15); }
+
+.mock-card-top { display: flex; align-items: center; gap: 8px; }
+.mock-card-icon {
+  width: 30px; height: 30px; border-radius: 7px;
+  background: var(--blue-dim); color: var(--blue2);
+  display: flex; align-items: center; justify-content: center;
+}
+.mock-card-title { font-family: var(--font-head); font-size: 15px; font-weight: 700; }
+.mock-card-desc { font-size: 12px; color: var(--text2); }
+
+.mock-card-meta { display: flex; gap: 12px; flex-wrap: wrap; }
+.mock-meta-item { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text3); }
+
+/* Editor */
+.mock-editor { display: flex; flex-direction: column; height: 100vh; }
+.mock-editor-body { display: grid; grid-template-columns: 1fr 240px; gap: 20px; padding: 20px 24px; overflow-y: auto; flex: 1; align-items: start; }
+.mock-editor-main { display: flex; flex-direction: column; }
+.mock-editor-sidebar { position: sticky; top: 20px; }
+
+.test-game-list { display: flex; flex-direction: column; gap: 4px; }
+
+.test-game-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 10px; border-radius: 8px;
+  background: var(--bg2); border: 1px solid var(--border);
+}
+
+.tgr-order {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--accent-dim); color: var(--accent);
+  font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+
+.tgr-icon {
+  width: 26px; height: 26px; border-radius: 6px;
+  background: var(--blue-dim); color: var(--blue2);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+
+.tgr-info { flex: 1; min-width: 0; }
+.tgr-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tgr-meta { font-size: 11px; color: var(--text3); }
+
+.tgr-actions { display: flex; gap: 4px; }
+
+.icon-btn {
+  width: 26px; height: 26px; border-radius: 5px;
+  background: var(--border); border: none; color: var(--text2);
+  font-size: 11px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: background 0.12s;
+}
+.icon-btn:hover { background: var(--border2); color: var(--text); }
+.icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.icon-btn--danger:hover { background: var(--red-dim); color: var(--red); }
+
+.picker-game {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--bg2);
+  transition: all 0.12s;
+}
+.picker-game:hover { border-color: var(--blue2); background: var(--blue-dim); }
+.picker-game--added { opacity: 0.5; cursor: not-allowed; }
+
+.picker-icon {
+  width: 28px; height: 28px; border-radius: 6px;
+  background: var(--blue-dim); color: var(--blue2);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+
+.warn-card { border-color: rgba(234,179,8,0.25) !important; background: var(--yellow-dim) !important; }

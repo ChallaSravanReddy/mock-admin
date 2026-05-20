@@ -1,0 +1,54 @@
+.dot-preview {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius2);
+  padding: 12px;
+  margin-top: 8px;
+}
+
+.dot-preview-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.dot-preview-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--text3);
+  text-transform: uppercase;
+}
+
+.dot-preview-info {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text2);
+  font-style: italic;
+}
+
+.dot-preview-area {
+  background: #e8eaed;
+  border-radius: 8px;
+  position: relative;
+  overflow: hidden;
+  max-width: 100%;
+}
+
+.dot-circle {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #9aa3bc;
+  transform: translate(-50%, -50%);
+  transition: background 0.2s, transform 0.2s;
+}
+
+.dot-circle--highlighted {
+  background: #166534;
+  transform: translate(-50%, -50%) scale(1.15);
+  box-shadow: 0 0 12px rgba(22, 101, 52, 0.6);
+  animation: pulse-dot 0.6s ease-in-out infinite;
+}
