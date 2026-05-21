@@ -292,15 +292,8 @@ export const PuzzleBuilder: React.FC = () => {
             <CardContent className="space-y-3">
               <SymbolPicker
                 selectedSymbol={correctAnswer}
-                onSymbolSelect={handleSymbolSelect}
+                onSymbolSelect={(symbol) => setCorrectAnswer(symbol)}
               />
-              <Button
-                onClick={handleSetCorrectAnswer}
-                disabled={!selectedSymbol}
-                className="w-full"
-              >
-                Set Answer
-              </Button>
             </CardContent>
           </Card>
 

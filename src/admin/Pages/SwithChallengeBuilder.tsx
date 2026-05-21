@@ -124,8 +124,12 @@ export const SwithChallengeBuilder: React.FC = () => {
 
   const handleUpdateOption = (index: number, value: string) => {
     const newOptions = [...options];
+    const oldOption = newOptions[index];
     newOptions[index] = value;
     setOptions(newOptions);
+    if (correctOption === oldOption && oldOption !== '') {
+      setCorrectOption(value);
+    }
   };
 
   const handleRemoveOption = (index: number) => {
