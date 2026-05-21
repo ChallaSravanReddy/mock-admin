@@ -25,7 +25,7 @@ const initialState: PuzzleGridState = {
   gridSize: 3,
   grid: createEmptyGrid(3),
   missingCell: null,
-  options: [],
+  options: ['circle', 'square', 'triangle', 'star'],
   correctAnswer: null,
   difficulty: 'medium',
 };

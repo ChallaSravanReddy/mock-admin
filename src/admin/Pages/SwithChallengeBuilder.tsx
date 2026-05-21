@@ -58,6 +58,35 @@ export const SwithChallengeBuilder: React.FC = () => {
       .join('');
   };
 
+  const handleDragStart = (e: React.DragEvent, index: number, type: 'input' | 'output') => {
+    e.dataTransfer.setData('index', index.toString());
+    e.dataTransfer.setData('type', type);
+  };
+
+  const handleDrop = (e: React.DragEvent, dropIndex: number, targetType: 'input' | 'output') => {
+    const dragIndex = parseInt(e.dataTransfer.getData('index'), 10);
+    const dragType = e.dataTransfer.getData('type');
+
+    if (dragType !== targetType) return; // Can only drag within the same row
+    if (dragIndex === dropIndex) return;
+
+    if (targetType === 'input') {
+      const newSymbols = [...inputSymbols];
+      const [dragged] = newSymbols.splice(dragIndex, 1);
+      newSymbols.splice(dropIndex, 0, dragged);
+      setInputSymbols(newSymbols);
+    } else {
+      const newSymbols = [...outputSymbols];
+      const [dragged] = newSymbols.splice(dragIndex, 1);
+      newSymbols.splice(dropIndex, 0, dragged);
+      setOutputSymbols(newSymbols);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
   const handleInputSymbolSelect = (index: number) => {
     setSelectedInputIndex(selectedInputIndex === index ? null : index);
   };
@@ -66,34 +95,31 @@ export const SwithChallengeBuilder: React.FC = () => {
     setSelectedOutputIndex(selectedOutputIndex === index ? null : index);
   };
 
+  const handleRemoveInputSymbol = (index: number) => {
+    const symbolToRemove = inputSymbols[index];
+    const newSymbols = inputSymbols.filter((_, i) => i !== index);
+    setInputSymbols(newSymbols);
+    setSelectedInputIndex(null);
+    // Also remove from output
+    setOutputSymbols(outputSymbols.filter(s => s !== symbolToRemove));
+  };
+
+  const handleAddInputSymbol = (symbol: SymbolCode) => {
+    setInputSymbols([...inputSymbols, symbol]);
+    setOutputSymbols([...outputSymbols, symbol]);
+  };
+
   const handleSwapInputSymbols = (symbol: SymbolCode) => {
     if (selectedInputIndex !== null) {
+      const oldSymbol = inputSymbols[selectedInputIndex];
       const newSymbols = [...inputSymbols];
       newSymbols[selectedInputIndex] = symbol;
       setInputSymbols(newSymbols);
       setSelectedInputIndex(null);
+      // Also swap in output
+      const newOutput = outputSymbols.map(s => s === oldSymbol ? symbol : s);
+      setOutputSymbols(newOutput);
     }
-  };
-
-  const handleSwapOutputSymbols = (symbol: SymbolCode) => {
-    if (selectedOutputIndex !== null) {
-      const newSymbols = [...outputSymbols];
-      newSymbols[selectedOutputIndex] = symbol;
-      setOutputSymbols(newSymbols);
-      setSelectedOutputIndex(null);
-    }
-  };
-
-  const handleRemoveInputSymbol = (index: number) => {
-    const newSymbols = inputSymbols.filter((_, i) => i !== index);
-    setInputSymbols(newSymbols);
-    setSelectedInputIndex(null);
-  };
-
-  const handleRemoveOutputSymbol = (index: number) => {
-    const newSymbols = outputSymbols.filter((_, i) => i !== index);
-    setOutputSymbols(newSymbols);
-    setSelectedOutputIndex(null);
   };
 
   const handleUpdateOption = (index: number, value: string) => {
@@ -122,9 +148,16 @@ export const SwithChallengeBuilder: React.FC = () => {
     if (!title.trim()) errors.push('Title is required');
     if (!description.trim()) errors.push('Description is required');
     if (inputSymbols.length < 4 || inputSymbols.length > 8) errors.push('Must have 4 to 8 input symbols');
-    if (outputSymbols.length < 4 || outputSymbols.length > 8) errors.push('Must have 4 to 8 output symbols');
+    if (inputSymbols.length !== outputSymbols.length) errors.push('Input and Output symbols must match exactly');
     if (options.some((opt) => !opt.trim())) errors.push('All options must be filled');
     if (!correctOption) errors.push('Correct option must be selected');
+    const answerCode = calculateAnswerCode();
+    if (correctOption !== answerCode) {
+      errors.push('Correct option must match the actual answer code (' + answerCode + ')');
+    }
+    if (!options.includes(answerCode)) {
+      errors.push('Correct answer must be in options');
+    }
     if (timeDuration < 10 || timeDuration > 60)
       errors.push('Time duration must be between 10 and 60 seconds');
 
@@ -257,8 +290,12 @@ export const SwithChallengeBuilder: React.FC = () => {
                 {inputSymbols.map((symbol, idx) => (
                   <button
                     key={idx}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, idx, 'input')}
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, idx, 'input')}
                     onClick={() => handleInputSymbolSelect(idx)}
-                    className={`p-3 rounded-lg border-2 transition ${
+                    className={`p-3 rounded-lg border-2 transition cursor-grab active:cursor-grabbing ${
                       selectedInputIndex === idx
                         ? 'border-blue-500 bg-blue-50'
                         : 'border-blue-300 hover:border-blue-400'
@@ -307,7 +344,7 @@ export const SwithChallengeBuilder: React.FC = () => {
                       {AVAILABLE_SYMBOLS.filter((s) => !inputSymbols.includes(s)).map((symbol) => (
                         <button
                           key={symbol}
-                          onClick={() => setInputSymbols([...inputSymbols, symbol])}
+                          onClick={() => handleAddInputSymbol(symbol)}
                           className="p-2 border-2 border-dashed border-blue-300 rounded hover:bg-blue-50 transition"
                         >
                           <SymbolDisplay symbol={symbol} size="md" />
@@ -333,12 +370,11 @@ export const SwithChallengeBuilder: React.FC = () => {
                   return (
                     <button
                       key={idx}
-                      onClick={() => handleOutputSymbolSelect(idx)}
-                      className={`p-3 rounded-lg border-2 transition relative ${
-                        selectedOutputIndex === idx
-                          ? 'border-green-500 bg-green-50'
-                          : 'border-green-300 hover:border-green-400'
-                      }`}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, idx, 'output')}
+                      onDragOver={handleDragOver}
+                      onDrop={(e) => handleDrop(e, idx, 'output')}
+                      className={`p-3 rounded-lg border-2 transition relative cursor-grab active:cursor-grabbing border-green-300 hover:border-green-400`}
                     >
                       <div className="mb-2">
                         <SymbolDisplay symbol={symbol} size="lg" />
@@ -346,55 +382,13 @@ export const SwithChallengeBuilder: React.FC = () => {
                       <div className="text-center font-bold text-sm text-gray-600">
                         {inputIndex + 1}
                       </div>
-                      {outputSymbols.length > 4 && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRemoveOutputSymbol(idx);
-                          }}
-                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs font-bold hover:bg-red-600"
-                        >
-                          ×
-                        </button>
-                      )}
                     </button>
                   );
                 })}
               </div>
 
               <div className="border-t pt-4 space-y-3">
-                {selectedOutputIndex !== null && outputSymbols.length > 0 && (
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Change Selected Symbol</label>
-                    <div className="flex gap-2 flex-wrap">
-                      {AVAILABLE_SYMBOLS.map((symbol) => (
-                        <button
-                          key={symbol}
-                          onClick={() => handleSwapOutputSymbols(symbol)}
-                          className="p-2 border-2 border-gray-300 rounded hover:bg-gray-100"
-                        >
-                          <SymbolDisplay symbol={symbol} size="md" />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {outputSymbols.length < inputSymbols.length && outputSymbols.length < 8 && (
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Add More Shapes</label>
-                    <div className="flex gap-2 flex-wrap">
-                      {AVAILABLE_SYMBOLS.filter((s) => !outputSymbols.includes(s)).map((symbol) => (
-                        <button
-                          key={symbol}
-                          onClick={() => setOutputSymbols([...outputSymbols, symbol])}
-                          className="p-2 border-2 border-dashed border-green-300 rounded hover:bg-green-50 transition"
-                        >
-                          <SymbolDisplay symbol={symbol} size="md" />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                 <p className="text-sm text-gray-500">Drag symbols to reorder them.</p>
               </div>
 
               {outputSymbols.length >= 4 && (
@@ -421,7 +415,7 @@ export const SwithChallengeBuilder: React.FC = () => {
                     value={option}
                     onChange={(e) => handleUpdateOption(idx, e.target.value)}
                     placeholder="e.g., 3142"
-                    maxLength={4}
+                    maxLength={8}
                     className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <Button

@@ -60,6 +60,13 @@ export const PuzzleBuilder: React.FC = () => {
 
   const handleSymbolSelect = (symbol: SymbolType) => {
     setSelectedSymbol(symbol);
+    if (selectedCells.length > 0) {
+      selectedCells.forEach((cell) => {
+        setCell(cell.row, cell.col, symbol);
+      });
+      setSelectedCells([]);
+      setSelectedSymbol(null);
+    }
   };
 
   const handlePlaceSymbol = () => {
@@ -214,31 +221,11 @@ export const PuzzleBuilder: React.FC = () => {
 
               <div className="flex gap-2 flex-wrap">
                 <Button
-                  onClick={handlePlaceSymbol}
-                  disabled={!selectedSymbol || selectedCells.length === 0}
-                >
-                  Place Symbol
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={handleClearCell}
-                  disabled={selectedCells.length === 0}
-                >
-                  Clear Selected
-                </Button>
-                <Button
                   variant="outline"
                   onClick={handleSetMissingCell}
                   disabled={selectedCells.length !== 1}
                 >
                   Mark Missing
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={handleClearSelection}
-                  disabled={selectedCells.length === 0}
-                >
-                  Clear Selection
                 </Button>
                 <Button
                   variant="destructive"

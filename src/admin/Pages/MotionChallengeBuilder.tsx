@@ -214,6 +214,18 @@ interface GridCanvasProps {
 const GridCanvas: React.FC<GridCanvasProps> = ({ grid, paintMode, onChange }) => {
   const paint = (r: number, c: number) => {
     const clone = grid.map((row) => row.map((cell) => ({ ...cell })));
+    
+    // Enforce single ball and single hole constraint
+    if (paintMode.type === 'ball' || paintMode.type === 'hole') {
+      clone.forEach((row, ri) => {
+        row.forEach((cell, ci) => {
+          if (cell.type === paintMode.type) {
+            clone[ri][ci] = { type: 'empty' };
+          }
+        });
+      });
+    }
+
     if (paintMode.type === 'colored') {
       clone[r][c] = { type: 'colored', color: paintMode.color };
     } else {
