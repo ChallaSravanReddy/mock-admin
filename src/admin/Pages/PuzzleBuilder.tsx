@@ -35,7 +35,7 @@ export const PuzzleBuilder: React.FC = () => {
     resetPuzzle,
   } = usePuzzleBuilderStore();
 
-  const { mockTests, updateMockTest } = useMockTestStore();
+  const { mockTests } = useMockTestStore();
   const [selectedSymbol, setSelectedSymbol] = useState<SymbolType>(null);
   const [selectedCells, setSelectedCells] = useState<{ row: number; col: number }[]>([]);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
@@ -60,13 +60,6 @@ export const PuzzleBuilder: React.FC = () => {
 
   const handleSymbolSelect = (symbol: SymbolType) => {
     setSelectedSymbol(symbol);
-    if (selectedCells.length > 0) {
-      selectedCells.forEach((cell) => {
-        setCell(cell.row, cell.col, symbol);
-      });
-      setSelectedCells([]);
-      setSelectedSymbol(null);
-    }
   };
 
   const handlePlaceSymbol = () => {
@@ -134,14 +127,6 @@ export const PuzzleBuilder: React.FC = () => {
         mockTestId: selectedMockTest,
         sequence: 1,
       });
-
-      // Update mock test totalQuestions in Zustand store
-      const test = mockTests.find(t => t.id === selectedMockTest);
-      if (test) {
-        updateMockTest(selectedMockTest, {
-          totalQuestions: (test.totalQuestions ?? 0) + 1,
-        });
-      }
 
       alert('Question saved successfully!');
       resetPuzzle();
@@ -221,11 +206,31 @@ export const PuzzleBuilder: React.FC = () => {
 
               <div className="flex gap-2 flex-wrap">
                 <Button
+                  onClick={handlePlaceSymbol}
+                  disabled={!selectedSymbol || selectedCells.length === 0}
+                >
+                  Place Symbol
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleClearCell}
+                  disabled={selectedCells.length === 0}
+                >
+                  Clear Selected
+                </Button>
+                <Button
                   variant="outline"
                   onClick={handleSetMissingCell}
                   disabled={selectedCells.length !== 1}
                 >
                   Mark Missing
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleClearSelection}
+                  disabled={selectedCells.length === 0}
+                >
+                  Clear Selection
                 </Button>
                 <Button
                   variant="destructive"
@@ -292,8 +297,15 @@ export const PuzzleBuilder: React.FC = () => {
             <CardContent className="space-y-3">
               <SymbolPicker
                 selectedSymbol={correctAnswer}
-                onSymbolSelect={(symbol) => setCorrectAnswer(symbol)}
+                onSymbolSelect={handleSymbolSelect}
               />
+              <Button
+                onClick={handleSetCorrectAnswer}
+                disabled={!selectedSymbol}
+                className="w-full"
+              >
+                Set Answer
+              </Button>
             </CardContent>
           </Card>
 

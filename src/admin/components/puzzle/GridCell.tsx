@@ -54,9 +54,7 @@ export const GridCell: React.FC<GridCellProps> = ({
       )}
       aria-label={`Grid cell ${row}-${col}${symbol ? ` containing ${symbol}` : ''}`}
     >
-      {isMissing ? (
-        <span className="text-amber-700 text-3xl font-extrabold">?</span>
-      ) : symbol ? (
+      {symbol ? (
         <div className="text-gray-700">{renderSymbol(symbol)}</div>
       ) : (
         <span className="text-gray-300 text-2xl">+</span>
