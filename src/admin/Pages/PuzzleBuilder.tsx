@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dialog';
 import { usePuzzleBuilderStore } from '../store';
 import { PuzzleGrid, SymbolPicker } from '../components/puzzle';
-import { AlertCircle, Save, RotateCcw, Grid3x3, Grid2x2, Plus } from 'lucide-react';
+import { AlertCircle, Save, RotateCcw, Grid3x3, Grid2x2, Plus, Wand2 } from 'lucide-react';
 import { useMockTestStore } from '../store';
 import { questionService } from '../services';
 import { SymbolType } from '../types';
@@ -33,6 +33,7 @@ export const PuzzleBuilder: React.FC = () => {
     setDifficulty,
     validateGrid,
     resetPuzzle,
+    autoGeneratePuzzle,
   } = usePuzzleBuilderStore();
 
   const { mockTests } = useMockTestStore();
@@ -49,31 +50,23 @@ export const PuzzleBuilder: React.FC = () => {
   };
 
   const handleCellClick = (row: number, col: number) => {
-    setSelectedCells((current) => {
-      const alreadySelected = current.some((cell) => cell.row === row && cell.col === col);
-      if (alreadySelected) {
-        return current.filter((cell) => !(cell.row === row && cell.col === col));
-      }
-      return [...current, { row, col }];
-    });
-  };
-
-  const handleSymbolSelect = (symbol: SymbolType) => {
-    setSelectedSymbol(symbol);
-  };
-
-  const handlePlaceSymbol = () => {
-    if (selectedCells.length > 0 && selectedSymbol) {
-      selectedCells.forEach((cell) => {
-        setCell(cell.row, cell.col, selectedSymbol);
+    if (selectedSymbol) {
+      setCell(row, col, selectedSymbol);
+      setSelectedSymbol(null);
+      setSelectedCells([]);
+    } else {
+      setSelectedCells((current) => {
+        const alreadySelected = current.some((cell) => cell.row === row && cell.col === col);
+        if (alreadySelected) {
+          return current.filter((cell) => !(cell.row === row && cell.col === col));
+        }
+        return [...current, { row, col }];
       });
     }
   };
 
-  const handleClearCell = () => {
-    selectedCells.forEach((cell) => {
-      clearCell(cell.row, cell.col);
-    });
+  const handleSymbolSelect = (symbol: SymbolType) => {
+    setSelectedSymbol(symbol);
   };
 
   const handleSetMissingCell = () => {
@@ -97,10 +90,6 @@ export const PuzzleBuilder: React.FC = () => {
 
   const handleRemoveOption = (symbol: any) => {
     setOptions(options.filter((opt) => opt !== symbol));
-  };
-
-  const handleClearSelection = () => {
-    setSelectedCells([]);
   };
 
   const handleSave = async () => {
@@ -206,31 +195,11 @@ export const PuzzleBuilder: React.FC = () => {
 
               <div className="flex gap-2 flex-wrap">
                 <Button
-                  onClick={handlePlaceSymbol}
-                  disabled={!selectedSymbol || selectedCells.length === 0}
-                >
-                  Place Symbol
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={handleClearCell}
-                  disabled={selectedCells.length === 0}
-                >
-                  Clear Selected
-                </Button>
-                <Button
                   variant="outline"
                   onClick={handleSetMissingCell}
                   disabled={selectedCells.length !== 1}
                 >
                   Mark Missing
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={handleClearSelection}
-                  disabled={selectedCells.length === 0}
-                >
-                  Clear Selection
                 </Button>
                 <Button
                   variant="destructive"
@@ -368,6 +337,18 @@ export const PuzzleBuilder: React.FC = () => {
           >
             <Save size={18} />
             Save Question
+          </Button>
+
+          <Button
+            onClick={() => {
+              autoGeneratePuzzle();
+              setValidationErrors([]);
+            }}
+            variant="default"
+            className="w-full gap-2 bg-purple-600 hover:bg-purple-700 text-white"
+          >
+            <Wand2 size={16} />
+            Auto Generate Puzzle
           </Button>
 
           <Button

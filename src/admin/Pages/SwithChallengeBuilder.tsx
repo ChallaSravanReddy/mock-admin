@@ -8,7 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { AlertCircle, Save, RotateCcw, Plus, Trash2, Check } from 'lucide-react';
+import { AlertCircle, Save, RotateCcw, Plus, Trash2, Check, Wand2 } from 'lucide-react';
 import { AVAILABLE_SYMBOLS, SymbolCode } from '../types/swithChallenge';
 import { SymbolDisplay } from '../components/puzzle/SymbolDisplay';
 import { useMockTestStore } from '../store';
@@ -221,6 +221,39 @@ export const SwithChallengeBuilder: React.FC = () => {
     setTimeDuration(20);
     setSelectedInputIndex(null);
     setSelectedOutputIndex(null);
+    setValidationErrors([]);
+  };
+
+  const handleAutoGenerate = () => {
+    const symbolCount = 4 + Math.floor(Math.random() * 2); // 4 or 5 symbols
+    const available = [...AVAILABLE_SYMBOLS].sort(() => Math.random() - 0.5);
+    const newInput = available.slice(0, symbolCount);
+    const newOutput = [...newInput].sort(() => Math.random() - 0.5);
+    
+    setInputSymbols(newInput);
+    setOutputSymbols(newOutput);
+    setSelectedInputIndex(null);
+    setSelectedOutputIndex(null);
+    
+    const answerCode = newOutput.map((symbol) => (newInput.indexOf(symbol) + 1).toString()).join('');
+    
+    const newOptions = [answerCode];
+    let attempts = 0;
+    while (newOptions.length < 4 && attempts < 100) {
+      const randomIndices = Array.from({ length: symbolCount }, (_, i) => (i + 1).toString())
+        .sort(() => Math.random() - 0.5)
+        .join('');
+      if (!newOptions.includes(randomIndices)) {
+        newOptions.push(randomIndices);
+      }
+      attempts++;
+    }
+    
+    const shuffledOptions = newOptions.sort(() => Math.random() - 0.5);
+    setOptions(shuffledOptions);
+    setCorrectOption(answerCode);
+    setTitle(`Auto Generated Swith Challenge ${Math.floor(Math.random() * 1000)}`);
+    setDescription('Match the correct sequence mapping from top to bottom.');
     setValidationErrors([]);
   };
 
@@ -494,6 +527,15 @@ export const SwithChallengeBuilder: React.FC = () => {
           <Button onClick={() => setShowDialog(true)} className="w-full gap-2 h-10" size="lg">
             <Save size={18} />
             Save Game
+          </Button>
+
+          <Button
+            onClick={handleAutoGenerate}
+            variant="default"
+            className="w-full gap-2 bg-purple-600 hover:bg-purple-700 text-white h-10"
+          >
+            <Wand2 size={18} />
+            Auto Generate Challenge
           </Button>
 
           <Button onClick={resetForm} variant="outline" className="w-full">

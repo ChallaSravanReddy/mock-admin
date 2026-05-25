@@ -23,6 +23,7 @@ import {
   ChevronDown,
   ChevronUp,
   Check,
+  Wand2,
 } from 'lucide-react';
 import {
   InductiveChallengeQuestion,
@@ -457,6 +458,115 @@ export const InductiveChallengeBuilder: React.FC = () => {
     }
   };
 
+  const handleAutoGenerate = () => {
+    const staticRules = [
+      {
+        name: 'Must have a Purple shape in the center cell',
+        apply: (grid: ShapeGrid) => {
+           grid[1][1] = { shape: SHAPE_TYPES[Math.floor(Math.random() * SHAPE_TYPES.length)], color: 'purple' };
+        },
+        break: (grid: ShapeGrid) => {
+           grid[1][1] = { shape: 'circle', color: 'red' };
+        }
+      },
+      {
+        name: 'Must contain exactly two Green shapes',
+        apply: (grid: ShapeGrid) => {
+           for(let r=0; r<3; r++) for(let c=0; c<3; c++) if(grid[r][c]?.color === 'green') grid[r][c] = null;
+           let placed = 0;
+           while(placed < 2) {
+             const r = Math.floor(Math.random() * 3);
+             const c = Math.floor(Math.random() * 3);
+             if(!grid[r][c]) {
+               grid[r][c] = { shape: SHAPE_TYPES[Math.floor(Math.random() * SHAPE_TYPES.length)], color: 'green' };
+               placed++;
+             }
+           }
+        },
+        break: (grid: ShapeGrid) => {
+           for(let r=0; r<3; r++) for(let c=0; c<3; c++) if(grid[r][c]?.color === 'green') grid[r][c] = null;
+        }
+      },
+      {
+         name: 'All shapes must be the same color',
+         apply: (grid: ShapeGrid) => {
+            const color = SHAPE_COLORS[Math.floor(Math.random() * SHAPE_COLORS.length)];
+            for(let r=0; r<3; r++) for(let c=0; c<3; c++) if(grid[r][c]) grid[r][c]!.color = color;
+         },
+         break: (grid: ShapeGrid) => {
+            if (!grid[0][0]) grid[0][0] = { shape: 'circle', color: 'red' };
+            if (!grid[2][2]) grid[2][2] = { shape: 'square', color: 'blue' };
+            grid[0][0]!.color = 'red';
+            grid[2][2]!.color = 'blue';
+         }
+      }
+    ];
+
+    const generateRandomGrid = () => {
+      const grid = createEmptyGrid(3);
+      const numShapes = 3 + Math.floor(Math.random() * 3);
+      let placed = 0;
+      while (placed < numShapes) {
+        const r = Math.floor(Math.random() * 3);
+        const c = Math.floor(Math.random() * 3);
+        if (!grid[r][c]) {
+          grid[r][c] = {
+            shape: SHAPE_TYPES[Math.floor(Math.random() * SHAPE_TYPES.length)],
+            color: SHAPE_COLORS[Math.floor(Math.random() * SHAPE_COLORS.length)]
+          };
+          placed++;
+        }
+      }
+      return grid;
+    };
+
+    const newQuestions: InductiveChallengeQuestion[] = [];
+    for (let i = 0; i < 2; i++) {
+      const rule = staticRules[Math.floor(Math.random() * staticRules.length)];
+      
+      const gridA = generateRandomGrid();
+      rule.apply(gridA);
+      
+      const gridB = generateRandomGrid();
+      rule.apply(gridB);
+      
+      const correct1 = generateRandomGrid();
+      rule.apply(correct1);
+      
+      const correct2 = generateRandomGrid();
+      rule.apply(correct2);
+      
+      const wrong1 = generateRandomGrid();
+      rule.break(wrong1);
+      
+      const wrong2 = generateRandomGrid();
+      rule.break(wrong2);
+      
+      const optionsGrids = [correct1, correct2, wrong1, wrong2].sort(() => Math.random() - 0.5);
+      
+      const options = optionsGrids.map((g, idx) => {
+         const id = String.fromCharCode(65 + idx);
+         return { id, grid: g, isCorrect: g === correct1 || g === correct2 };
+      });
+      
+      const correctOptionIds = options.filter(o => o.isCorrect).map(o => o.id);
+
+      newQuestions.push({
+        id: `question-${Date.now()}-${i}`,
+        examplePair: { gridA, gridB },
+        options,
+        correctOptionIds,
+        rule: rule.name,
+        displayDurationMs: 30000
+      });
+    }
+
+    setQuestions(newQuestions);
+    setTitle(`Auto Inductive Challenge ${Math.floor(Math.random() * 1000)}`);
+    setDescription("Identify the hidden rule in the example pair, and pick the two options that follow it.");
+    setValidationErrors([]);
+  };
+
   const resetForm = () => {
     setTitle('');
     setDescription('');
@@ -547,6 +657,13 @@ export const InductiveChallengeBuilder: React.FC = () => {
             size="lg"
           >
             <Save size={18} /> Save Game
+          </Button>
+          <Button
+            onClick={handleAutoGenerate}
+            variant="default"
+            className="w-full gap-2 h-10 bg-purple-600 hover:bg-purple-700 text-white"
+          >
+            <Wand2 size={18} /> Auto Generate Challenge
           </Button>
           <Button onClick={resetForm} variant="outline" className="w-full">
             <RotateCcw size={16} className="mr-2" /> Reset All

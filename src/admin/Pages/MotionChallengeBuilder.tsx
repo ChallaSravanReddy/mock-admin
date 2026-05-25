@@ -27,6 +27,8 @@ import {
   X,
   Crosshair,
   Disc,
+  Calculator,
+  Wand2,
 } from 'lucide-react';
 import {
   MotionGrid,
@@ -41,6 +43,7 @@ import {
 } from '../types/motionChallenge';
 import { motionChallengeService } from '../services/motionChallengeService';
 import { useMockTestStore } from '../store';
+import { calculateMinMoves } from '../utils/motionEngine';
 
 // ─── Cell Renderer ────────────────────────────────────────────────────────────
 
@@ -288,6 +291,69 @@ const LevelEditor: React.FC<LevelEditorProps> = ({
   const balls = level.grid.flat().filter((c) => c.type === 'ball').length;
   const holes = level.grid.flat().filter((c) => c.type === 'hole').length;
 
+  const handleCalculateMoves = () => {
+    if (balls !== 1 || holes !== 1) {
+      alert('Level must have exactly 1 red ball and 1 black hole to calculate moves.');
+      return;
+    }
+    
+    const minMoves = calculateMinMoves(level.grid);
+    if (minMoves === null) {
+      alert('This puzzle configuration appears to be unsolvable or too complex (takes > 50 moves).');
+    } else {
+      onUpdate({ ...level, maxMoves: minMoves });
+    }
+  };
+
+  const handleAutoGenerateLevel = () => {
+    let newGrid: MotionGrid | null = null;
+    let minMoves: number | null = null;
+    let attempts = 0;
+    
+    while (minMoves === null && attempts < 20) {
+      const tempGrid = createEmptyMotionGrid(level.rows, level.cols);
+      
+      let hr = Math.floor(Math.random() * level.rows);
+      let hc = Math.floor(Math.random() * level.cols);
+      let br = Math.floor(Math.random() * level.rows);
+      let bc = Math.floor(Math.random() * level.cols);
+      while (hr === br && hc === bc) {
+        br = Math.floor(Math.random() * level.rows);
+        bc = Math.floor(Math.random() * level.cols);
+      }
+      tempGrid[hr][hc] = { type: 'hole' };
+      tempGrid[br][bc] = { type: 'ball' };
+      
+      const numBlocked = 2 + Math.floor(Math.random() * 4);
+      for(let i=0; i<numBlocked; i++) {
+        const r = Math.floor(Math.random() * level.rows);
+        const c = Math.floor(Math.random() * level.cols);
+        if (tempGrid[r][c].type === 'empty') tempGrid[r][c] = { type: 'blocked' };
+      }
+      
+      const numColored = 1 + Math.floor(Math.random() * 3);
+      for(let i=0; i<numColored; i++) {
+        const r = Math.floor(Math.random() * level.rows);
+        const c = Math.floor(Math.random() * level.cols);
+        if (tempGrid[r][c].type === 'empty') {
+           tempGrid[r][c] = { type: 'colored', color: CELL_COLORS[Math.floor(Math.random() * CELL_COLORS.length)] };
+        }
+      }
+      
+      minMoves = calculateMinMoves(tempGrid);
+      if (minMoves !== null) {
+        newGrid = tempGrid;
+      }
+      attempts++;
+    }
+    
+    if (newGrid && minMoves !== null) {
+      onUpdate({ ...level, grid: newGrid, maxMoves: minMoves });
+    } else {
+      alert("Failed to auto-generate a valid solvable layout. Try reducing grid size or try again.");
+    }
+  };
+
   return (
     <Card className="border-orange-200">
       <CardHeader className="pb-2">
@@ -385,6 +451,24 @@ const LevelEditor: React.FC<LevelEditorProps> = ({
               onClick={() => onUpdate({ ...level, grid: createEmptyMotionGrid(level.rows, level.cols) })}
             >
               Clear grid
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2 border-purple-300 text-purple-700 hover:bg-purple-50"
+              onClick={handleCalculateMoves}
+            >
+              <Calculator size={14} />
+              Calculate Min Moves
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2 border-orange-300 text-orange-700 hover:bg-orange-50"
+              onClick={handleAutoGenerateLevel}
+            >
+              <Wand2 size={14} />
+              Auto Generate Level
             </Button>
             <p className="text-xs text-gray-500 self-center ml-auto">
               {balls} ball · {holes} hole · {level.grid.flat().filter((c) => c.type === 'colored').length} coloured

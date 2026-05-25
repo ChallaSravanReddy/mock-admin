@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
-import { SymbolType, PuzzleGridState } from '../types';
+import { SymbolType, PuzzleGridState, SYMBOLS } from '../types';
 
 interface PuzzleBuilderStore extends PuzzleGridState {
   setGridSize: (size: number) => void;
@@ -13,6 +13,7 @@ interface PuzzleBuilderStore extends PuzzleGridState {
   setDifficulty: (difficulty: 'easy' | 'medium' | 'hard') => void;
   validateGrid: () => { valid: boolean; errors: string[] };
   resetPuzzle: () => void;
+  autoGeneratePuzzle: () => void;
 }
 
 const createEmptyGrid = (size: number): SymbolType[][] => {
@@ -112,6 +113,35 @@ export const usePuzzleBuilderStore = create<PuzzleBuilderStore>()(
       },
 
       resetPuzzle: () => set(initialState),
+
+      autoGeneratePuzzle: () => {
+        const state = get();
+        const size = state.gridSize;
+        const availableSymbols = [...SYMBOLS].slice(0, size).sort(() => Math.random() - 0.5);
+        
+        const newGrid = createEmptyGrid(size);
+        for (let r = 0; r < size; r++) {
+          for (let c = 0; c < size; c++) {
+            newGrid[r][c] = availableSymbols[(r + c) % size];
+          }
+        }
+        
+        const missingRow = Math.floor(Math.random() * size);
+        const missingCol = Math.floor(Math.random() * size);
+        const correctSymbol = newGrid[missingRow][missingCol];
+        newGrid[missingRow][missingCol] = null;
+        
+        const allSymbols = [...SYMBOLS].sort(() => Math.random() - 0.5);
+        const incorrectOptions = allSymbols.filter(s => s !== correctSymbol).slice(0, 3);
+        const newOptions = [correctSymbol, ...incorrectOptions].sort(() => Math.random() - 0.5);
+        
+        set({
+          grid: newGrid,
+          missingCell: { row: missingRow, col: missingCol },
+          correctAnswer: correctSymbol,
+          options: newOptions,
+        });
+      },
     }),
     { name: 'PuzzleBuilderStore' }
   )

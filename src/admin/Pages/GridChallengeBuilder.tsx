@@ -25,6 +25,7 @@ import {
   Grid3x3,
   ChevronDown,
   ChevronUp,
+  Wand2,
 } from 'lucide-react';
 import {
   GridChallengeRound,
@@ -505,6 +506,66 @@ export const GridChallengeBuilder: React.FC = () => {
     }
   };
 
+  const handleAutoGenerate = () => {
+    const numRounds = 3;
+    const newRounds: GridChallengeRound[] = [];
+    
+    for (let i = 0; i < numRounds; i++) {
+      const numDots = 8 + Math.floor(Math.random() * 8); // 8 to 15 dots
+      const dots: DotPosition[] = [];
+      for (let d = 0; d < numDots; d++) {
+        dots.push({
+          id: `dot-${Date.now()}-${i}-${d}`,
+          x: 5 + Math.floor(Math.random() * 90),
+          y: 5 + Math.floor(Math.random() * 90),
+          isTarget: false,
+        });
+      }
+      const targetIdx = Math.floor(Math.random() * dots.length);
+      dots[targetIdx].isTarget = true;
+      const targetDotId = dots[targetIdx].id;
+
+      const isSymmetric = Math.random() > 0.5;
+      const leftGrid = Array.from({ length: 5 }, () => Array(5).fill(false));
+      const rightGrid = Array.from({ length: 5 }, () => Array(5).fill(false));
+      
+      for (let r = 0; r < 5; r++) {
+        for (let c = 0; c < 5; c++) {
+          if (Math.random() > 0.5) {
+            leftGrid[r][c] = true;
+            rightGrid[r][c] = true;
+          }
+        }
+      }
+      
+      if (!isSymmetric) {
+        const changes = 1 + Math.floor(Math.random() * 3);
+        for (let ch = 0; ch < changes; ch++) {
+          const rr = Math.floor(Math.random() * 5);
+          const rc = Math.floor(Math.random() * 5);
+          rightGrid[rr][rc] = !rightGrid[rr][rc];
+        }
+      }
+
+      newRounds.push({
+        id: `round-${Date.now()}-${i}`,
+        dotPhase: { dots, targetDotId, highlightDurationMs: 2000 },
+        symmetryPhase: {
+          id: `sym-${Date.now()}-${i}`,
+          gridLeft: leftGrid,
+          gridRight: rightGrid,
+          isSymmetric,
+          label: isSymmetric ? "Are they identical?" : "Are they different?",
+        },
+      });
+    }
+    
+    setRounds(newRounds);
+    setTitle(`Auto Grid Challenge ${Math.floor(Math.random() * 1000)}`);
+    setDescription("Memorize the blinking target dot, then answer the symmetry question.");
+    setValidationErrors([]);
+  };
+
   const resetForm = () => {
     setTitle('');
     setDescription('');
@@ -600,6 +661,13 @@ export const GridChallengeBuilder: React.FC = () => {
             size="lg"
           >
             <Save size={18} /> Save Game
+          </Button>
+          <Button
+            onClick={handleAutoGenerate}
+            variant="default"
+            className="w-full gap-2 h-10 bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            <Wand2 size={18} /> Auto Generate Challenge
           </Button>
           <Button onClick={resetForm} variant="outline" className="w-full">
             <RotateCcw size={16} className="mr-2" /> Reset All
