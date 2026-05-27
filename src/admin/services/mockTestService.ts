@@ -393,6 +393,14 @@ export const mockTestService = {
 
   // Fetch all questions for a mock test
   getQuestionsForTest: async (mockTestId: string): Promise<any[]> => {
+    // AI / manual questions added in Mock Test dialog live in local store — check first
+    const { useMockTestQuestionsStore } = await import('../store/mockTestQuestionsStore');
+    const { hackathonToViewerQuestion } = await import('../lib/hackathonToViewer');
+    const stored = useMockTestQuestionsStore.getState().getQuestions(mockTestId);
+    if (stored.length > 0) {
+      return stored.map((q) => hackathonToViewerQuestion(q));
+    }
+
     return trySupabase<any[]>(
       async (): Promise<any[]> => {
         const { data: links, error: linksError } = await supabase
@@ -402,7 +410,13 @@ export const mockTestService = {
           .order('sequence_order', { ascending: true });
 
         if (linksError) throw linksError;
-        if (!links || links.length === 0) return [];
+        if (!links || links.length === 0) {
+          const again = useMockTestQuestionsStore.getState().getQuestions(mockTestId);
+          if (again.length > 0) {
+            return again.map((q) => hackathonToViewerQuestion(q));
+          }
+          return [];
+        }
 
         const questions: any[] = [];
 
@@ -434,16 +448,24 @@ export const mockTestService = {
               .eq('id', refId)
               .single();
             if (!error && q) {
+              const { normalizeSwitchQuestion } = await import('../lib/normalizeSwitchQuestion');
+              const sw = normalizeSwitchQuestion({
+                input_symbols: q.input_symbols,
+                output_symbols: q.output_symbols,
+                options: q.options,
+                correct_option: q.correct_option,
+                time_duration_sec: q.time_duration_sec,
+              });
               questions.push({
                 id: q.id,
                 type: 'switch_challenge',
                 title: q.title || 'Switch Question',
-                inputSymbols: q.input_symbols,
-                outputSymbols: q.output_symbols,
-                options: q.options,
-                correct: q.correct_option,
+                inputSymbols: sw.inputSymbols,
+                outputSymbols: sw.outputSymbols,
+                options: sw.options,
+                correct: sw.correct,
                 difficulty: q.difficulty,
-                timeDuration: q.time_duration_sec,
+                timeDuration: sw.timeDuration,
               });
             }
           } else if (link.game_type === 'grid_challenge') {
@@ -459,14 +481,21 @@ export const mockTestService = {
                 .eq('game_id', q.id)
                 .order('round_order', { ascending: true });
 
+              const { normalizeGridQuestion } = await import('../lib/normalizeGridQuestion');
+              const grid = normalizeGridQuestion({
+                roundsData: rounds || [],
+                totalRounds: q.total_rounds,
+                description: q.description,
+              });
               questions.push({
                 id: q.id,
                 type: 'grid_challenge',
                 title: q.title || 'Grid Challenge',
-                description: q.description || 'Remember the highlighted dot and judge symmetry',
-                rounds: q.total_rounds,
+                description: grid.description,
+                rounds: grid.totalRounds,
                 difficulty: q.difficulty,
-                roundsData: rounds || [],
+                roundsData: grid.rounds,
+                symmetryDisplayMs: grid.symmetryDisplayMs,
               });
             }
           } else if (link.game_type === 'inductive_challenge') {
@@ -505,13 +534,20 @@ export const mockTestService = {
                 .eq('game_id', q.id)
                 .order('level_order', { ascending: true });
 
+              const { normalizeMotionQuestion } = await import('../lib/normalizeMotionQuestion');
+              const motion = normalizeMotionQuestion({
+                levelsData: levels || [],
+                description: q.description,
+                time_duration_seconds: q.time_duration_seconds,
+              });
               questions.push({
                 id: q.id,
                 type: 'motion_challenge',
                 title: q.title || 'Motion Challenge',
-                description: q.description || 'Guide the red ball into the hole',
-                maxMoves: levels?.[0]?.max_moves || 10,
-                levelsData: levels || [],
+                description: motion.description,
+                maxMoves: motion.maxMoves,
+                timeDurationSeconds: motion.timeDurationSeconds,
+                levelsData: motion.levels,
               });
             }
           }
@@ -519,7 +555,7 @@ export const mockTestService = {
         return questions;
       },
       async (): Promise<any[]> => {
-        // Dynamic import to prevent circular dependency issues
+        // Legacy fallback: questions linked via individual builder services
         const { questionsData } = await import('./questionService');
         const { swithChallengeService } = await import('./swithChallengeService');
         const { gridChallengeService } = await import('./gridChallengeService');
@@ -528,7 +564,6 @@ export const mockTestService = {
 
         const localQuestions: any[] = [];
 
-        // 1. Puzzle
         const pQuestions = questionsData.filter((q) => q.mockTestId === mockTestId);
         pQuestions.forEach((q) => {
           localQuestions.push({
@@ -543,34 +578,48 @@ export const mockTestService = {
           });
         });
 
-        // 2. Switch
         const switchGames = (swithChallengeService as any).games?.filter((g: any) => g.mockTestId === mockTestId) || [];
+        const { normalizeSwitchQuestion: normalizeSwitch } = await import('../lib/normalizeSwitchQuestion');
         switchGames.forEach((g: any) => {
-          localQuestions.push({
-            id: g.id,
-            type: 'switch_challenge',
-            title: g.title,
+          const sw = normalizeSwitch({
             inputSymbols: g.inputSymbols,
             outputSymbols: g.outputSymbols,
             options: g.options,
             correct: g.correctOption,
+            timeDuration: g.timeDuration,
+          });
+          localQuestions.push({
+            id: g.id,
+            type: 'switch_challenge',
+            title: g.title,
+            inputSymbols: sw.inputSymbols,
+            outputSymbols: sw.outputSymbols,
+            options: sw.options,
+            correct: sw.correct,
+            timeDuration: sw.timeDuration,
           });
         });
 
-        // 3. Grid
         const gridGames = (gridChallengeService as any).games?.filter((g: any) => g.mockTestId === mockTestId) || [];
+        const { normalizeGridQuestion: normalizeGrid } = await import('../lib/normalizeGridQuestion');
         gridGames.forEach((g: any) => {
+          const grid = normalizeGrid({
+            roundsData: g.rounds,
+            totalRounds: g.totalRounds,
+            description: g.description,
+            symmetryDisplayMs: g.symmetryDisplayMs,
+          });
           localQuestions.push({
             id: g.id,
             type: 'grid_challenge',
             title: g.title,
-            description: g.description,
-            rounds: g.totalRounds,
-            roundsData: g.rounds,
+            description: grid.description,
+            rounds: grid.totalRounds,
+            roundsData: grid.rounds,
+            symmetryDisplayMs: grid.symmetryDisplayMs,
           });
         });
 
-        // 4. Inductive
         const inductiveGames = (inductiveChallengeService as any).games?.filter((g: any) => g.mockTestId === mockTestId) || [];
         inductiveGames.forEach((g: any) => {
           localQuestions.push({
@@ -584,16 +633,22 @@ export const mockTestService = {
           });
         });
 
-        // 5. Motion
         const motionGames = (motionChallengeService as any).games?.filter((g: any) => g.mockTestId === mockTestId) || [];
+        const { normalizeMotionQuestion: normalizeMotion } = await import('../lib/normalizeMotionQuestion');
         motionGames.forEach((g: any) => {
+          const motion = normalizeMotion({
+            levelsData: g.levels,
+            description: g.description,
+            timeDurationSeconds: g.timeDurationSeconds,
+          });
           localQuestions.push({
             id: g.id,
             type: 'motion_challenge',
             title: g.title,
-            description: g.description,
-            maxMoves: g.levels[0]?.maxMoves || 10,
-            levelsData: g.levels,
+            description: motion.description,
+            maxMoves: motion.maxMoves,
+            timeDurationSeconds: motion.timeDurationSeconds,
+            levelsData: motion.levels,
           });
         });
 

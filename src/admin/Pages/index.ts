@@ -1,5 +1,6 @@
 export { Dashboard } from './Dashboard';
 export { MockTestManagement } from './MockTestManagement';
+export { MockTestDetailPage } from './MockTestDetailPage';
 export { PuzzleBuilder } from './PuzzleBuilder';
 export { Results } from './Results';
 export { AdminLayout } from './AdminLayout';
@@ -8,3 +9,4 @@ export { GridChallengeBuilder } from './GridChallengeBuilder';
 export { InductiveChallengeBuilder } from './InductiveChallengeBuilder';
 export { MotionChallengeBuilder } from './MotionChallengeBuilder';
 export { MockTestViewer } from './MockTestViewer';
+export { HackathonStudio } from './HackathonStudio';

@@ -1,16 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { usePuzzleBuilderStore } from '../store';
 import { PuzzleGrid, SymbolPicker } from '../components/puzzle';
-import { AlertCircle, Save, RotateCcw, Grid3x3, Grid2x2, Plus, Wand2 } from 'lucide-react';
+import { RotateCcw, Grid3x3, Plus } from 'lucide-react';
+import {
+  BuilderPageHeader,
+  BuilderValidationAlerts,
+  BuilderActionBar,
+  SaveToMockTestDialog,
+} from '../components/builder';
 import { useMockTestStore } from '../store';
 import { questionService } from '../services';
 import { SymbolType } from '../types';
@@ -133,10 +132,12 @@ export const PuzzleBuilder: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold text-gray-900">Puzzle Builder</h1>
-        <p className="text-gray-600">Create and design matrix puzzle questions</p>
-      </div>
+      <BuilderPageHeader
+        title="Puzzle Builder"
+        description="Create and design matrix puzzle questions"
+      />
+
+      <BuilderValidationAlerts errors={validationErrors} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Grid Editor */}
@@ -217,31 +218,20 @@ export const PuzzleBuilder: React.FC = () => {
               )}
             </CardContent>
           </Card>
+
+          <BuilderActionBar
+            onAutoGenerate={() => {
+              autoGeneratePuzzle();
+              setValidationErrors([]);
+            }}
+            onReset={resetPuzzle}
+            onSave={() => setShowDialog(true)}
+            saveLabel="Save Question"
+            autoGenerateLabel="Auto Generate Puzzle"
+          />
         </div>
 
-        {/* Configuration Panel */}
         <div className="space-y-6">
-          {/* Validation Status */}
-          {validationErrors.length > 0 && (
-            <Card className="border-red-200 bg-red-50">
-              <CardHeader>
-                <CardTitle className="text-red-800 flex items-center gap-2">
-                  <AlertCircle size={18} />
-                  Validation Errors
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2">
-                  {validationErrors.map((error, idx) => (
-                    <li key={idx} className="text-sm text-red-700">
-                      • {error}
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          )}
-
           {/* Missing Cell Info */}
           <Card>
             <CardHeader>
@@ -328,75 +318,21 @@ export const PuzzleBuilder: React.FC = () => {
               </select>
             </CardContent>
           </Card>
-
-          {/* Save Button */}
-          <Button
-            onClick={() => setShowDialog(true)}
-            className="w-full gap-2"
-            size="lg"
-          >
-            <Save size={18} />
-            Save Question
-          </Button>
-
-          <Button
-            onClick={() => {
-              autoGeneratePuzzle();
-              setValidationErrors([]);
-            }}
-            variant="default"
-            className="w-full gap-2 bg-purple-600 hover:bg-purple-700 text-white"
-          >
-            <Wand2 size={16} />
-            Auto Generate Puzzle
-          </Button>
-
-          <Button
-            onClick={resetPuzzle}
-            variant="outline"
-            className="w-full"
-          >
-            Reset All
-          </Button>
         </div>
       </div>
 
-      {/* Save Dialog */}
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Save Puzzle Question</DialogTitle>
-            <DialogDescription>Select a mock test to add this question</DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-gray-700">Mock Test</label>
-              <select
-                value={selectedMockTest}
-                onChange={(e) => setSelectedMockTest(e.target.value)}
-                className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">-- Select a test --</option>
-                {mockTests.map((test) => (
-                  <option key={test.id} value={test.id}>
-                    {test.title}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setShowDialog(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleSave} disabled={isSaving || !selectedMockTest}>
-                {isSaving ? 'Saving...' : 'Save Question'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <SaveToMockTestDialog
+        open={showDialog}
+        onOpenChange={setShowDialog}
+        title="Save Puzzle Question"
+        description="Select a mock test to add this question"
+        mockTests={mockTests}
+        selectedMockTest={selectedMockTest}
+        onSelectedMockTestChange={setSelectedMockTest}
+        onSave={handleSave}
+        isSaving={isSaving}
+        saveLabel="Save Question"
+      />
     </div>
   );
 };

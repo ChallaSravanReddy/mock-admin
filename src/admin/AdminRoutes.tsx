@@ -4,6 +4,7 @@ import { AdminLayout } from './Pages/AdminLayout';
 import {
   Dashboard,
   MockTestManagement,
+  MockTestDetailPage,
   PuzzleBuilder,
   Results,
   SwithChallengeBuilder,
@@ -11,24 +12,27 @@ import {
   InductiveChallengeBuilder,
   MotionChallengeBuilder,
   MockTestViewer,
+  HackathonStudio,
 } from './Pages';
 
 export const AdminRoutes: React.FC = () => {
   return (
     <Routes>
       {/* Full-screen mock test viewer (no admin shell sidebar) */}
-      <Route path="/mock-tests/:id/view" element={<MockTestViewer />} />
+      <Route path="mock-tests/:id/view" element={<MockTestViewer />} />
 
       {/* Admin dashboard and builders inside layout */}
       <Route element={<AdminLayout />}>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/mock-tests" element={<MockTestManagement />} />
-        <Route path="/puzzle-builder" element={<PuzzleBuilder />} />
-        <Route path="/swith-challenge" element={<SwithChallengeBuilder />} />
-        <Route path="/grid-challenge" element={<GridChallengeBuilder />} />
-        <Route path="/inductive-challenge" element={<InductiveChallengeBuilder />} />
-        <Route path="/motion-challenge" element={<MotionChallengeBuilder />} />
-        <Route path="/results" element={<Results />} />
+        <Route index element={<Dashboard />} />
+        <Route path="mock-tests" element={<MockTestManagement />} />
+        <Route path="mock-tests/:id" element={<MockTestDetailPage />} />
+        <Route path="puzzle-builder" element={<PuzzleBuilder />} />
+        <Route path="swith-challenge" element={<SwithChallengeBuilder />} />
+        <Route path="grid-challenge" element={<GridChallengeBuilder />} />
+        <Route path="inductive-challenge" element={<InductiveChallengeBuilder />} />
+        <Route path="motion-challenge" element={<MotionChallengeBuilder />} />
+        <Route path="hackathon" element={<HackathonStudio />} />
+        <Route path="results" element={<Results />} />
         <Route path="*" element={<Navigate to="/admin" replace />} />
       </Route>
     </Routes>

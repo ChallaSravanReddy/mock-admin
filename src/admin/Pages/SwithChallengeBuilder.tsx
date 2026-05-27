@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Plus, Trash2, Check } from 'lucide-react';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { AlertCircle, Save, RotateCcw, Plus, Trash2, Check, Wand2 } from 'lucide-react';
+  BuilderPageHeader,
+  BuilderValidationAlerts,
+  BuilderActionBar,
+  GameInfoCard,
+  SaveToMockTestDialog,
+} from '../components/builder';
 import { AVAILABLE_SYMBOLS, SymbolCode } from '../types/swithChallenge';
 import { SymbolDisplay } from '../components/puzzle/SymbolDisplay';
 import { useMockTestStore } from '../store';
@@ -263,58 +263,23 @@ export const SwithChallengeBuilder: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold text-gray-900">Swith Challenge Builder</h1>
-        <p className="text-gray-600">Create symbol ordering puzzle games</p>
-      </div>
+      <BuilderPageHeader
+        title="Swith Challenge Builder"
+        description="Create symbol ordering puzzle games"
+      />
+
+      <BuilderValidationAlerts errors={validationErrors} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Editor */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Validation Errors */}
-          {validationErrors.length > 0 && (
-            <Card className="border-red-500 bg-red-50">
-              <CardContent className="pt-6">
-                <div className="flex gap-3">
-                  <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
-                  <div className="text-sm text-red-700 space-y-1">
-                    {validationErrors.map((error, i) => (
-                      <div key={i}>{error}</div>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Game Info */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Game Information</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Title</label>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g., Symbol Order Challenge 1"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Description</label>
-                <input
-                  type="text"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe the challenge..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </CardContent>
-          </Card>
+        <div className="lg:col-span-2 space-y-4">
+          <GameInfoCard
+            title={title}
+            description={description}
+            onTitleChange={setTitle}
+            onDescriptionChange={setDescription}
+            titlePlaceholder="e.g., Symbol Order Challenge 1"
+            descriptionPlaceholder="Describe the challenge..."
+          />
 
           {/* Input Symbols (Top Row) */}
           <Card>
@@ -489,7 +454,14 @@ export const SwithChallengeBuilder: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Difficulty & Settings */}
+          <BuilderActionBar
+            onAutoGenerate={handleAutoGenerate}
+            onReset={resetForm}
+            onSave={() => setShowDialog(true)}
+          />
+        </div>
+
+        <div className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>Settings</CardTitle>
@@ -508,83 +480,44 @@ export const SwithChallengeBuilder: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2">
-                  Time Duration (seconds)
-                </label>
+                <label className="block text-sm font-medium mb-2">Time duration (seconds)</label>
                 <input
                   type="number"
                   value={timeDuration}
                   onChange={(e) => setTimeDuration(Number(e.target.value))}
-                  min="10"
-                  max="60"
+                  min={10}
+                  max={60}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+                <p className="text-xs text-gray-400 mt-1">10–60 seconds per question</p>
               </div>
             </CardContent>
           </Card>
 
-          {/* Action Buttons */}
-          <Button onClick={() => setShowDialog(true)} className="w-full gap-2 h-10" size="lg">
-            <Save size={18} />
-            Save Game
-          </Button>
-
-          <Button
-            onClick={handleAutoGenerate}
-            variant="default"
-            className="w-full gap-2 bg-purple-600 hover:bg-purple-700 text-white h-10"
-          >
-            <Wand2 size={18} />
-            Auto Generate Challenge
-          </Button>
-
-          <Button onClick={resetForm} variant="outline" className="w-full">
-            Reset All
-          </Button>
+          <Card>
+            <CardHeader>
+              <CardTitle>How to Play</CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm text-gray-600 space-y-1">
+              <p>• Match output symbol order to input positions</p>
+              <p>• Answer is a digit code (e.g. 3142)</p>
+              <p>• Drag symbols to reorder input/output rows</p>
+            </CardContent>
+          </Card>
         </div>
       </div>
 
-      {/* Save Dialog */}
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Save Swith Challenge</DialogTitle>
-            <DialogDescription>
-              Select a mock test to add this game question
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-gray-700">Mock Test</label>
-              <select
-                value={selectedMockTest}
-                onChange={(e) => setSelectedMockTest(e.target.value)}
-                className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">-- Select a test --</option>
-                {mockTests.map((test) => (
-                  <option key={test.id} value={test.id}>
-                    {test.title} ({test.totalQuestions} questions)
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setShowDialog(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSave}
-                disabled={isSaving || !selectedMockTest}
-              >
-                {isSaving ? 'Saving...' : 'Save'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <SaveToMockTestDialog
+        open={showDialog}
+        onOpenChange={setShowDialog}
+        title="Save Swith Challenge"
+        description="Select a mock test to add this game question"
+        mockTests={mockTests}
+        selectedMockTest={selectedMockTest}
+        onSelectedMockTestChange={setSelectedMockTest}
+        onSave={handleSave}
+        isSaving={isSaving}
+      />
     </div>
   );
 };

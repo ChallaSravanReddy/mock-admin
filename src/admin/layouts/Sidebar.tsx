@@ -9,6 +9,7 @@ import {
   Grid3x3,
   Shapes,
   Move,
+  Trophy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -34,6 +35,11 @@ const navItems: NavItem[] = [
     label: 'Mock Tests',
     icon: <Lightbulb size={20} />,
     path: '/admin/mock-tests',
+  },
+  {
+    label: 'Hackathon Studio',
+    icon: <Trophy size={20} />,
+    path: '/admin/hackathon',
   },
   {
     label: 'Puzzle Builder',

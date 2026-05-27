@@ -8,16 +8,6 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  AlertCircle,
-  Save,
-  RotateCcw,
   Plus,
   Trash2,
   ChevronDown,
@@ -30,6 +20,13 @@ import {
   Calculator,
   Wand2,
 } from 'lucide-react';
+import {
+  BuilderPageHeader,
+  BuilderValidationAlerts,
+  BuilderActionBar,
+  GameInfoCard,
+  SaveToMockTestDialog,
+} from '../components/builder';
 import {
   MotionGrid,
   MotionCell,
@@ -250,6 +247,65 @@ const GridCanvas: React.FC<GridCanvasProps> = ({ grid, paintMode, onChange }) =>
   );
 };
 
+// ─── Auto-generate helpers ────────────────────────────────────────────────────
+
+function generateSolvableLevel(
+  index: number,
+  rows = 6,
+  cols = 4
+): MotionChallengeLevel | null {
+  let attempts = 0;
+
+  while (attempts < 20) {
+    const tempGrid = createEmptyMotionGrid(rows, cols);
+
+    let hr = Math.floor(Math.random() * rows);
+    let hc = Math.floor(Math.random() * cols);
+    let br = Math.floor(Math.random() * rows);
+    let bc = Math.floor(Math.random() * cols);
+    while (hr === br && hc === bc) {
+      br = Math.floor(Math.random() * rows);
+      bc = Math.floor(Math.random() * cols);
+    }
+    tempGrid[hr][hc] = { type: 'hole' };
+    tempGrid[br][bc] = { type: 'ball' };
+
+    const numBlocked = 2 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < numBlocked; i++) {
+      const r = Math.floor(Math.random() * rows);
+      const c = Math.floor(Math.random() * cols);
+      if (tempGrid[r][c].type === 'empty') tempGrid[r][c] = { type: 'blocked' };
+    }
+
+    const numColored = 1 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < numColored; i++) {
+      const r = Math.floor(Math.random() * rows);
+      const c = Math.floor(Math.random() * cols);
+      if (tempGrid[r][c].type === 'empty') {
+        tempGrid[r][c] = {
+          type: 'colored',
+          color: CELL_COLORS[Math.floor(Math.random() * CELL_COLORS.length)],
+        };
+      }
+    }
+
+    const minMoves = calculateMinMoves(tempGrid);
+    if (minMoves !== null) {
+      return {
+        id: `level-${index}-${Date.now()}`,
+        rows,
+        cols,
+        grid: tempGrid,
+        maxMoves: minMoves,
+        label: `Level ${index + 1}`,
+      };
+    }
+    attempts++;
+  }
+
+  return null;
+}
+
 // ─── LevelEditor ──────────────────────────────────────────────────────────────
 
 interface LevelEditorProps {
@@ -306,51 +362,11 @@ const LevelEditor: React.FC<LevelEditorProps> = ({
   };
 
   const handleAutoGenerateLevel = () => {
-    let newGrid: MotionGrid | null = null;
-    let minMoves: number | null = null;
-    let attempts = 0;
-    
-    while (minMoves === null && attempts < 20) {
-      const tempGrid = createEmptyMotionGrid(level.rows, level.cols);
-      
-      let hr = Math.floor(Math.random() * level.rows);
-      let hc = Math.floor(Math.random() * level.cols);
-      let br = Math.floor(Math.random() * level.rows);
-      let bc = Math.floor(Math.random() * level.cols);
-      while (hr === br && hc === bc) {
-        br = Math.floor(Math.random() * level.rows);
-        bc = Math.floor(Math.random() * level.cols);
-      }
-      tempGrid[hr][hc] = { type: 'hole' };
-      tempGrid[br][bc] = { type: 'ball' };
-      
-      const numBlocked = 2 + Math.floor(Math.random() * 4);
-      for(let i=0; i<numBlocked; i++) {
-        const r = Math.floor(Math.random() * level.rows);
-        const c = Math.floor(Math.random() * level.cols);
-        if (tempGrid[r][c].type === 'empty') tempGrid[r][c] = { type: 'blocked' };
-      }
-      
-      const numColored = 1 + Math.floor(Math.random() * 3);
-      for(let i=0; i<numColored; i++) {
-        const r = Math.floor(Math.random() * level.rows);
-        const c = Math.floor(Math.random() * level.cols);
-        if (tempGrid[r][c].type === 'empty') {
-           tempGrid[r][c] = { type: 'colored', color: CELL_COLORS[Math.floor(Math.random() * CELL_COLORS.length)] };
-        }
-      }
-      
-      minMoves = calculateMinMoves(tempGrid);
-      if (minMoves !== null) {
-        newGrid = tempGrid;
-      }
-      attempts++;
-    }
-    
-    if (newGrid && minMoves !== null) {
-      onUpdate({ ...level, grid: newGrid, maxMoves: minMoves });
+    const generated = generateSolvableLevel(index, level.rows, level.cols);
+    if (generated) {
+      onUpdate({ ...generated, id: level.id, label: level.label || generated.label });
     } else {
-      alert("Failed to auto-generate a valid solvable layout. Try reducing grid size or try again.");
+      alert('Failed to auto-generate a valid solvable layout. Try reducing grid size or try again.');
     }
   };
 
@@ -603,67 +619,49 @@ export const MotionChallengeBuilder: React.FC = () => {
     setValidationErrors([]);
   };
 
+  const handleAutoGenerate = () => {
+    const numLevels = 2;
+    const newLevels: MotionChallengeLevel[] = [];
+
+    for (let i = 0; i < numLevels; i++) {
+      const generated = generateSolvableLevel(i);
+      newLevels.push(generated ?? createDefaultLevel(i));
+    }
+
+    setLevels(newLevels);
+    setTitle(`Auto Motion Challenge ${Math.floor(Math.random() * 1000)}`);
+    setDescription(
+      'Slide coloured blocks horizontally or vertically and guide the red ball into the black hole within each level’s move limit.'
+    );
+    setDifficulty('medium');
+    setTimeDurationSeconds(240);
+    setCorrectPoints(4);
+    setWrongPoints(-1);
+    setValidationErrors([]);
+  };
+
   const minutes = Math.floor(timeDurationSeconds / 60);
   const seconds = timeDurationSeconds % 60;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="space-y-1">
-        <h1 className="text-3xl font-bold text-gray-900">Motion Challenge Builder</h1>
-        <p className="text-gray-600">
-          Design grid-sliding puzzles — move the red ball into the black hole
-          (Imagination · Decision Making · Time Management)
-        </p>
-      </div>
+      <BuilderPageHeader
+        title="Motion Challenge Builder"
+        description="Design grid-sliding puzzles — move the red ball into the black hole (Imagination · Decision Making · Time Management)"
+      />
 
-      {/* Validation */}
-      {validationErrors.length > 0 && (
-        <Card className="border-red-400 bg-red-50">
-          <CardContent className="pt-5">
-            <div className="flex gap-3">
-              <AlertCircle className="text-red-500 h-5 w-5 flex-shrink-0 mt-0.5" />
-              <ul className="text-sm text-red-700 space-y-0.5">
-                {validationErrors.map((e, i) => (
-                  <li key={i}>• {e}</li>
-                ))}
-              </ul>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <BuilderValidationAlerts errors={validationErrors} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* ── Left: levels ── */}
         <div className="lg:col-span-2 space-y-4">
-          {/* Game info */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Game Information</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Title</label>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. Motion Challenge Level 1"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-400"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Description</label>
-                <textarea
-                  rows={2}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe the challenge…"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
-                />
-              </div>
-            </CardContent>
-          </Card>
+          <GameInfoCard
+            title={title}
+            description={description}
+            onTitleChange={setTitle}
+            onDescriptionChange={setDescription}
+            titlePlaceholder="e.g. Motion Challenge Level 1"
+            focusRingClass="focus:ring-orange-400"
+          />
 
           {/* Level editors */}
           {levels.map((l, i) => (
@@ -683,16 +681,11 @@ export const MotionChallengeBuilder: React.FC = () => {
             </Button>
           )}
 
-          <Button
-            onClick={() => setShowDialog(true)}
-            className="w-full gap-2 h-10"
-            size="lg"
-          >
-            <Save size={18} /> Save Game
-          </Button>
-          <Button onClick={resetForm} variant="outline" className="w-full">
-            <RotateCcw size={16} className="mr-2" /> Reset All
-          </Button>
+          <BuilderActionBar
+            onAutoGenerate={handleAutoGenerate}
+            onReset={resetForm}
+            onSave={() => setShowDialog(true)}
+          />
         </div>
 
         {/* ── Right: settings ── */}
@@ -799,42 +792,18 @@ export const MotionChallengeBuilder: React.FC = () => {
         </div>
       </div>
 
-      {/* Save Dialog */}
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Save Motion Challenge</DialogTitle>
-            <DialogDescription>
-              Select a mock test to attach this game to
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-gray-700">Mock Test</label>
-              <select
-                value={selectedMockTest}
-                onChange={(e) => setSelectedMockTest(e.target.value)}
-                className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-400"
-              >
-                <option value="">-- Select a test --</option>
-                {mockTests.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.title}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setShowDialog(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleSave} disabled={isSaving || !selectedMockTest}>
-                {isSaving ? 'Saving…' : 'Save'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <SaveToMockTestDialog
+        open={showDialog}
+        onOpenChange={setShowDialog}
+        title="Save Motion Challenge"
+        description="Select a mock test to attach this game to"
+        mockTests={mockTests}
+        selectedMockTest={selectedMockTest}
+        onSelectedMockTestChange={setSelectedMockTest}
+        onSave={handleSave}
+        isSaving={isSaving}
+        focusRingClass="focus:ring-orange-400"
+      />
     </div>
   );
 };

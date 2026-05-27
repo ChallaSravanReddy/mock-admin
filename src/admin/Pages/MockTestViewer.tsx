@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,6 +6,12 @@ import { Clock, ChevronLeft, ChevronRight, Send, BarChart3, Zap, Grid3x3, Shapes
 import { useMockTestStore } from '../store';
 import { mockTestService } from '../services/mockTestService';
 import { GAME_TYPE_CONFIG } from './MockTestManagement';
+import { ReadOnlyShapeGrid } from '../components/inductive/InductiveGridDisplay';
+import { normalizeInductiveQuestions } from '../lib/normalizeInductiveQuestion';
+import { normalizeSwitchQuestion } from '../lib/normalizeSwitchQuestion';
+import { normalizeGridQuestion } from '../lib/normalizeGridQuestion';
+import { normalizeMotionQuestion } from '../lib/normalizeMotionQuestion';
+import { SwitchSymbolRow } from '../components/switch/SwitchSymbolRow';
 
 // ─── Mock question bank (placeholder — replace with Supabase queries) ─────────
 const MOCK_QUESTION_BANK: Record<string, any[]> = {
@@ -17,10 +23,82 @@ const MOCK_QUESTION_BANK: Record<string, any[]> = {
     { id: 's1', type: 'switch_challenge', title: 'Switch Q1', inputSymbols: ['circle','square','triangle','cross'], outputSymbols: ['triangle','square','cross','circle'], options: ['3142','2413','4321','1432'], correct: '3142' },
   ],
   grid_challenge: [
-    { id: 'g1', type: 'grid_challenge', title: 'Grid Challenge Q1', rounds: 3, description: 'Remember the highlighted dot position in each round, then answer the symmetry question.' },
+    {
+      id: 'g1',
+      type: 'grid_challenge',
+      title: 'Grid Challenge Q1',
+      rounds: 3,
+      description: 'Remember the highlighted dot position in each round, then answer the symmetry question.',
+      roundsData: [
+        {
+          id: 'r1',
+          dotPhase: {
+            dots: [
+              { id: 'd1', x: 20, y: 25, isTarget: true },
+              { id: 'd2', x: 55, y: 40, isTarget: false },
+              { id: 'd3', x: 75, y: 70, isTarget: false },
+              { id: 'd4', x: 35, y: 80, isTarget: false },
+              { id: 'd5', x: 85, y: 20, isTarget: false },
+            ],
+            targetDotId: 'd1',
+            highlightDurationMs: 2000,
+          },
+          symmetryPhase: {
+            id: 's1',
+            gridLeft: [
+              [true, false, true, false, false],
+              [false, true, false, true, false],
+              [true, false, false, false, true],
+              [false, false, true, false, true],
+              [false, true, false, true, false],
+            ],
+            gridRight: [
+              [true, false, true, false, false],
+              [false, true, false, true, false],
+              [true, false, false, false, true],
+              [false, false, true, false, true],
+              [false, true, false, true, false],
+            ],
+            isSymmetric: true,
+            label: 'Are they identical?',
+          },
+        },
+      ],
+    },
   ],
   inductive_challenge: [
-    { id: 'i1', type: 'inductive_challenge', title: 'Inductive Q1', description: 'Two grids show a rule. Which two of the four options follow the same rule?', options: ['A','B','C','D'], correct: ['A','C'] },
+    {
+      id: 'i1',
+      type: 'inductive_challenge',
+      title: 'Inductive Q1',
+      description: 'Two grids show a rule. Which two of the four options follow the same rule?',
+      correct: ['A', 'C'],
+      questionsData: [
+        {
+          id: 'iq1',
+          displayDurationMs: 30000,
+          correctOptionIds: ['A', 'C'],
+          examplePair: {
+            gridA: [
+              [{ shape: 'square', color: 'green' }, { shape: 'circle', color: 'purple' }, null],
+              [null, { shape: 'triangle', color: 'blue' }, { shape: 'cross', color: 'red' }],
+              [{ shape: 'circle', color: 'orange' }, null, { shape: 'square', color: 'purple' }],
+            ],
+            gridB: [
+              [{ shape: 'circle', color: 'purple' }, { shape: 'triangle', color: 'blue' }, { shape: 'square', color: 'green' }],
+              [{ shape: 'cross', color: 'red' }, null, { shape: 'circle', color: 'orange' }],
+              [null, { shape: 'square', color: 'purple' }, { shape: 'triangle', color: 'blue' }],
+            ],
+          },
+          options: [
+            { id: 'A', isCorrect: true, grid: [[{ shape: 'square', color: 'green' }, null, null], [null, null, null], [null, null, null]] },
+            { id: 'B', isCorrect: false, grid: [[null, { shape: 'cross', color: 'red' }, null], [null, null, null], [null, null, null]] },
+            { id: 'C', isCorrect: true, grid: [[{ shape: 'triangle', color: 'blue' }, { shape: 'circle', color: 'orange' }, null], [null, null, null], [null, null, null]] },
+            { id: 'D', isCorrect: false, grid: [[null, null, { shape: 'cross', color: 'green' }], [null, null, null], [null, null, null]] },
+          ],
+        },
+      ],
+    },
   ],
   motion_challenge: [
     { id: 'm1', type: 'motion_challenge', title: 'Motion Challenge Q1', description: 'Move the red ball into the black hole within 10 moves.', maxMoves: 10 },
@@ -36,13 +114,136 @@ const Symbol: React.FC<{ name: string; size?: number }> = ({ name, size = 28 }) 
   return <span style={{ fontSize: size }}>{map[name] ?? '?'}</span>;
 };
 
-// ─── Question Renderers ───────────────────────────────────────────────────────
+// ─── Shared challenge chrome ─────────────────────────────────────────────────
 
-const PuzzleQuestion: React.FC<{ q: any; answer: string; onAnswer: (a: string) => void }> = ({ q, answer, onAnswer }) => {
-  const numCols = q.grid?.[0]?.length || 3;
+type QuestionChromeProps = {
+  questionNumber?: number;
+  totalQuestions?: number;
+};
+
+interface ChallengeShellProps {
+  title: string;
+  questionNumber?: number;
+  totalQuestions?: number;
+  timeRemaining?: number;
+  totalTime?: number;
+  children: React.ReactNode;
+}
+
+function useCountdown(totalSeconds: number | undefined, onExpire: () => void) {
+  const [timeRemaining, setTimeRemaining] = useState<number | undefined>(undefined);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const onExpireRef = useRef(onExpire);
+  onExpireRef.current = onExpire;
+
+  const resetTimer = useCallback(() => {
+    if (totalSeconds === undefined) return;
+    setTimeRemaining(totalSeconds);
+  }, [totalSeconds]);
+
+  useEffect(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+
+    if (totalSeconds === undefined) {
+      setTimeRemaining(undefined);
+      return;
+    }
+
+    setTimeRemaining(totalSeconds);
+
+    intervalRef.current = setInterval(() => {
+      setTimeRemaining((prev) => {
+        if (prev === undefined) return prev;
+        if (prev <= 1) {
+          if (intervalRef.current) clearInterval(intervalRef.current);
+          intervalRef.current = null;
+          onExpireRef.current();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [totalSeconds]);
+
+  return {
+    timeRemaining: totalSeconds === undefined ? undefined : timeRemaining,
+    resetTimer,
+  };
+}
+
+const ChallengeShell: React.FC<ChallengeShellProps> = ({
+  title,
+  questionNumber,
+  totalQuestions,
+  timeRemaining,
+  totalTime,
+  children,
+}) => {
+  const showTimer =
+    timeRemaining !== undefined && totalTime !== undefined && totalTime > 0;
+  const barWidth = showTimer ? (timeRemaining / totalTime) * 100 : 0;
+  const isLow = showTimer && timeRemaining < 10;
+
   return (
     <div className="space-y-5">
-      <p className="text-gray-700 font-medium">{q.prompt}</p>
+      {showTimer && (
+        <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+          <div
+            className={`h-full transition-all duration-300 ${isLow ? 'bg-red-500' : 'bg-blue-600'}`}
+            style={{ width: `${barWidth}%` }}
+          />
+        </div>
+      )}
+      <div className="flex items-start justify-between gap-4">
+        <h3 className="text-lg font-bold text-gray-900">{title}</h3>
+        {questionNumber !== undefined && totalQuestions !== undefined && (
+          <span className="text-sm text-gray-500 whitespace-nowrap">
+            Question {questionNumber} of {totalQuestions}
+          </span>
+        )}
+      </div>
+      {children}
+    </div>
+  );
+};
+
+const CHALLENGE_POINTS = { correct: 3, wrong: -1 };
+
+// ─── Question Renderers ───────────────────────────────────────────────────────
+
+const PuzzleQuestion: React.FC<{
+  q: any;
+  answer: string;
+  onAnswer: (a: string) => void;
+  questionNumber?: number;
+  totalQuestions?: number;
+}> = ({ q, answer, onAnswer, questionNumber, totalQuestions }) => {
+  const [submitted, setSubmitted] = useState(false);
+  const numCols = q.grid?.[0]?.length || 3;
+  const title = q.prompt || q.description || q.title || 'Choose the missing symbol';
+
+  const isCorrect = submitted && answer === q.correct;
+  const points = q.scoringCorrect ?? CHALLENGE_POINTS.correct;
+
+  const handleSubmit = () => {
+    if (!answer) return;
+    setSubmitted(true);
+  };
+
+  return (
+    <ChallengeShell
+      title={title}
+      questionNumber={questionNumber}
+      totalQuestions={totalQuestions}
+      timeRemaining={undefined}
+    >
       <div className="flex justify-center">
         <div className="inline-grid gap-1" style={{ gridTemplateColumns: `repeat(${numCols}, 64px)` }}>
           {q.grid.map((row: any[], ri: number) =>
@@ -72,54 +273,118 @@ const PuzzleQuestion: React.FC<{ q: any; answer: string; onAnswer: (a: string) =
         <p className="text-sm font-medium text-gray-600 mb-2">Choose the missing symbol:</p>
         <div className="flex gap-3 flex-wrap">
           {q.options.map((opt: string) => (
-            <button key={opt} onClick={() => onAnswer(opt)}
-              className={`w-16 h-16 rounded-lg border-2 flex items-center justify-center transition-all ${answer === opt ? 'border-blue-600 bg-blue-50 scale-105 shadow' : 'border-gray-300 hover:border-blue-300'}`}>
+            <button
+              key={opt}
+              type="button"
+              disabled={submitted}
+              onClick={() => onAnswer(opt)}
+              className={`w-16 h-16 rounded-lg border-2 flex items-center justify-center transition-all ${
+                answer === opt
+                  ? 'border-blue-600 bg-blue-50 scale-105 shadow'
+                  : 'border-gray-300 hover:border-blue-300'
+              } disabled:opacity-75`}
+            >
               <Symbol name={opt} size={26} />
             </button>
           ))}
         </div>
       </div>
-    </div>
+      {!submitted && (
+        <Button onClick={handleSubmit} disabled={!answer} className="w-full">
+          Submit Answer
+        </Button>
+      )}
+      {submitted && (
+        <p className={isCorrect ? 'text-green-600 font-semibold' : 'text-red-500 font-semibold'}>
+          {isCorrect ? `Correct! +${points} pts` : 'Incorrect'}
+        </p>
+      )}
+    </ChallengeShell>
   );
 };
 
-const SwitchQuestion: React.FC<{ q: any; answer: string; onAnswer: (a: string) => void }> = ({ q, answer, onAnswer }) => (
-  <div className="space-y-5">
-    <div className="grid grid-cols-2 gap-6">
+const SwitchQuestion: React.FC<{
+  q: any;
+  answer: string;
+  onAnswer: (a: string) => void;
+  questionNumber?: number;
+  totalQuestions?: number;
+}> = ({ q, answer, onAnswer, questionNumber, totalQuestions }) => {
+  const sw = normalizeSwitchQuestion(q);
+  const [submitted, setSubmitted] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
+  const totalTime = sw.timeDuration;
+  const correctPoints = sw.scoringCorrect ?? CHALLENGE_POINTS.correct;
+
+  const handleTimeout = useCallback(() => {
+    setTimedOut(true);
+    setSubmitted(true);
+  }, []);
+
+  const { timeRemaining } = useCountdown(totalTime, handleTimeout);
+
+  const showFeedback = submitted || timedOut || Boolean(answer);
+  const isCorrect = answer === sw.correct && !timedOut;
+
+  const handleSelect = (opt: string) => {
+    if (submitted || timedOut) return;
+    onAnswer(opt);
+    setSubmitted(true);
+  };
+
+  return (
+    <ChallengeShell
+      title={q.title || 'Switch Challenge'}
+      questionNumber={questionNumber}
+      totalQuestions={totalQuestions}
+      timeRemaining={timeRemaining}
+      totalTime={totalTime}
+    >
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        <SwitchSymbolRow
+          symbols={sw.inputSymbols}
+          variant="input"
+          label="Input (top row)"
+        />
+        <SwitchSymbolRow
+          symbols={sw.outputSymbols}
+          variant="output"
+          inputSymbols={sw.inputSymbols}
+          label="Output (bottom row)"
+        />
+      </div>
       <div>
-        <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Input (top row)</p>
-        <div className="flex gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
-          {q.inputSymbols.map((s: string, i: number) => (
-            <div key={i} className="flex flex-col items-center gap-1">
-              <Symbol name={s} size={26} /><span className="text-xs font-bold">{i+1}</span>
-            </div>
+        <p className="text-sm font-medium text-gray-600 mb-2">What is the ordering code?</p>
+        <div className="flex gap-3 flex-wrap">
+          {sw.options.map((opt: string) => (
+            <button
+              key={opt}
+              type="button"
+              disabled={submitted || timedOut}
+              onClick={() => handleSelect(opt)}
+              className={`px-6 py-3 rounded-lg border-2 text-lg font-bold transition-all ${
+                answer === opt
+                  ? 'border-blue-600 bg-blue-600 text-white'
+                  : 'border-gray-300 hover:border-blue-300'
+              } disabled:opacity-75`}
+            >
+              {opt}
+            </button>
           ))}
         </div>
       </div>
-      <div>
-        <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Output (bottom row)</p>
-        <div className="flex gap-2 p-3 bg-green-50 rounded-lg border border-green-200">
-          {q.outputSymbols.map((s: string, i: number) => (
-            <div key={i} className="flex flex-col items-center gap-1">
-              <Symbol name={s} size={26} /><span className="text-xs font-bold text-green-700">{q.inputSymbols.indexOf(s)+1}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-    <div>
-      <p className="text-sm font-medium text-gray-600 mb-2">What is the ordering code?</p>
-      <div className="flex gap-3 flex-wrap">
-        {q.options.map((opt: string) => (
-          <button key={opt} onClick={() => onAnswer(opt)}
-            className={`px-6 py-3 rounded-lg border-2 text-lg font-bold transition-all ${answer === opt ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-300 hover:border-blue-300'}`}>
-            {opt}
-          </button>
-        ))}
-      </div>
-    </div>
-  </div>
-);
+      {showFeedback && (
+        <p className={isCorrect ? 'text-green-600 font-semibold' : 'text-red-500 font-semibold'}>
+          {timedOut
+            ? "Time's up — Incorrect"
+            : isCorrect
+              ? `Correct! +${correctPoints} pts`
+              : 'Incorrect'}
+        </p>
+      )}
+    </ChallengeShell>
+  );
+};
 
 // ─── Interactive Game Renderers ──────────────────────────────────────────────
 
@@ -132,75 +397,6 @@ const COLOR_CSS = {
   'blue-dark': '#1d4ed8',
   pink: '#ec4899',
   orange: '#ea580c',
-};
-
-const SHAPE_COLOR_MAP: Record<string, string> = {
-  green: '#16a34a',
-  purple: '#9333ea',
-  blue: '#1d4ed8',
-  red: '#dc2626',
-  orange: '#ea580c',
-};
-
-const ShapeIcon: React.FC<{ shape: string; color: string; size?: number }> = ({
-  shape,
-  color,
-  size = 20,
-}) => {
-  const c = SHAPE_COLOR_MAP[color] || '#1d4ed8';
-  switch (shape) {
-    case 'square':
-      return (
-        <svg width={size} height={size} viewBox="0 0 20 20" className="inline-block">
-          <rect x="2" y="2" width="16" height="16" fill={c} />
-        </svg>
-      );
-    case 'circle':
-      return (
-        <svg width={size} height={size} viewBox="0 0 20 20" className="inline-block">
-          <circle cx="10" cy="10" r="8" fill={c} />
-        </svg>
-      );
-    case 'triangle':
-      return (
-        <svg width={size} height={size} viewBox="0 0 20 20" className="inline-block">
-          <polygon points="10,2 18,18 2,18" fill={c} />
-        </svg>
-      );
-    case 'cross':
-      return (
-        <svg width={size} height={size} viewBox="0 0 20 20" className="inline-block">
-          <rect x="8" y="2" width="4" height="16" fill={c} />
-          <rect x="2" y="8" width="16" height="4" fill={c} />
-        </svg>
-      );
-    default:
-      return null;
-  }
-};
-
-const ReadOnlyShapeGrid: React.FC<{ grid: any[][]; label?: string }> = ({ grid, label }) => {
-  if (!grid || !Array.isArray(grid)) return null;
-  return (
-    <div className="flex flex-col items-center gap-1.5">
-      {label && <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{label}</span>}
-      <div
-        className="grid gap-1 p-1.5 bg-white border-2 border-gray-200 rounded"
-        style={{ gridTemplateColumns: `repeat(${grid[0]?.length || 3}, 1fr)` }}
-      >
-        {grid.map((row, ri) =>
-          row.map((cell, ci) => (
-            <div
-              key={`${ri}-${ci}`}
-              className="w-10 h-10 border border-gray-100 flex items-center justify-center bg-gray-50 rounded"
-            >
-              {cell && <ShapeIcon shape={cell.shape} color={cell.color} size={18} />}
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
 };
 
 const CellView: React.FC<{
@@ -310,43 +506,53 @@ const RenderSymmetryGrid: React.FC<{ grid: boolean[][] }> = ({ grid }) => {
   );
 };
 
-const GridChallengeQuestion: React.FC<{ q: any; answer?: any; onAnswer?: (a: any) => void }> = ({ q, answer, onAnswer }) => {
-  const rounds = q.roundsData || [];
-  const normalizedRounds = rounds.map((r: any, index: number) => ({
-    id: r.id || `rnd-${index}`,
-    dotPhase: r.dotPhase || {
-      dots: r.dots || [],
-      targetDotId: r.target_dot_id || '',
-      highlightDurationMs: r.highlight_duration_ms || 2000,
-    },
-    symmetryPhase: r.symmetryPhase || {
-      gridLeft: r.grid_left || [],
-      gridRight: r.grid_right || [],
-      isSymmetric: r.is_symmetric !== undefined ? r.is_symmetric : false,
-      label: r.symmetry_label || 'Is it Symmetric?',
-    }
-  }));
+const GridChallengeQuestion: React.FC<{
+  q: any;
+  answer?: any;
+  onAnswer?: (a: any) => void;
+  questionNumber?: number;
+  totalQuestions?: number;
+}> = ({ q, answer, onAnswer, questionNumber, totalQuestions }) => {
+  const gridNorm = normalizeGridQuestion(q);
+  const normalizedRounds = gridNorm.rounds;
+  const totalRounds = gridNorm.totalRounds;
+  const overallSeconds = totalRounds * 30;
 
   const [gameState, setGameState] = useState<'idle' | 'dot' | 'symmetry' | 'recall' | 'done'>('idle');
   const [currentRoundIdx, setCurrentRoundIdx] = useState(0);
   const [userAnswers, setUserAnswers] = useState<any[]>([]);
+  const [timedOut, setTimedOut] = useState(false);
+
+  const handleOverallTimeout = useCallback(() => {
+    setTimedOut(true);
+    setGameState('done');
+    if (onAnswer) {
+      onAnswer({ completed: false, timedOut: true, rounds: userAnswers });
+    }
+  }, [onAnswer, userAnswers]);
+
+  const activeOverallSeconds = gameState === 'idle' ? undefined : overallSeconds;
+  const { timeRemaining, resetTimer } = useCountdown(activeOverallSeconds, handleOverallTimeout);
 
   useEffect(() => {
     setGameState(answer ? 'done' : 'idle');
     setCurrentRoundIdx(0);
     setUserAnswers(answer?.rounds || []);
+    setTimedOut(false);
   }, [q, answer]);
 
   useEffect(() => {
-    let timer: any;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     if (gameState === 'dot') {
       const duration = normalizedRounds[currentRoundIdx]?.dotPhase.highlightDurationMs || 2000;
       timer = setTimeout(() => {
         setGameState('symmetry');
       }, duration);
     }
-    return () => clearTimeout(timer);
-  }, [gameState, currentRoundIdx]);
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [gameState, currentRoundIdx, normalizedRounds]);
 
   if (normalizedRounds.length === 0) {
     return (
@@ -362,11 +568,13 @@ const GridChallengeQuestion: React.FC<{ q: any; answer?: any; onAnswer?: (a: any
     setGameState('dot');
     setCurrentRoundIdx(0);
     setUserAnswers([]);
+    setTimedOut(false);
     if (onAnswer) onAnswer(undefined);
+    resetTimer();
   };
 
-  const handleSymmetryAnswer = (answer: boolean) => {
-    setUserAnswers(prev => [...prev, { round: currentRoundIdx, symmetryAnswer: answer }]);
+  const handleSymmetryAnswer = (symAnswer: boolean) => {
+    setUserAnswers((prev) => [...prev, { round: currentRoundIdx, symmetryAnswer: symAnswer }]);
     setGameState('recall');
   };
 
@@ -379,7 +587,7 @@ const GridChallengeQuestion: React.FC<{ q: any; answer?: any; onAnswer?: (a: any
     setUserAnswers(updated);
 
     if (currentRoundIdx + 1 < normalizedRounds.length) {
-      setCurrentRoundIdx(prev => prev + 1);
+      setCurrentRoundIdx((prev) => prev + 1);
       setGameState('dot');
     } else {
       setGameState('done');
@@ -392,37 +600,44 @@ const GridChallengeQuestion: React.FC<{ q: any; answer?: any; onAnswer?: (a: any
     }
   };
 
+  const shellRoundNumber = gameState === 'idle' ? questionNumber : currentRoundIdx + 1;
+  const shellRoundTotal = gameState === 'idle' ? totalQuestions : totalRounds;
+
+  let phaseContent: React.ReactNode = null;
+
   if (gameState === 'idle') {
-    return (
-      <div className="text-center space-y-6 py-8">
-        <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-3xl mx-auto shadow">🎯</div>
-        <div className="max-w-md mx-auto space-y-2">
-          <h3 className="text-lg font-bold text-gray-900">{q.title}</h3>
-          <p className="text-sm text-gray-600">{q.description}</p>
+    phaseContent = (
+      <div className="text-center space-y-6 py-4">
+        <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-3xl mx-auto shadow">
+          🎯
         </div>
+        <p className="text-sm text-gray-600 max-w-md mx-auto">{gridNorm.description || q.description}</p>
         <div className="bg-gray-50 rounded-xl p-5 border inline-block text-left text-sm text-gray-700 space-y-2">
-          <p>• <strong>{normalizedRounds.length} rounds</strong> — interleaved memory and symmetry check</p>
-          <p>• Highlighted dot appears for <strong>2 seconds</strong></p>
-          <p>• Symmetry patterns shown for <strong>6 seconds</strong></p>
+          <p>
+            • <strong>{normalizedRounds.length} rounds</strong> — interleaved memory and symmetry check
+          </p>
+          <p>
+            • Highlighted dot appears for <strong>2 seconds</strong>
+          </p>
+          <p>
+            • Overall time limit: <strong>{overallSeconds} seconds</strong>
+          </p>
         </div>
-        <div>
-          <Button onClick={handleStart} className="px-8 py-6 text-lg font-bold bg-blue-600 hover:bg-blue-700 shadow-md">
-            Start Grid Challenge
-          </Button>
-        </div>
+        <Button onClick={handleStart} className="px-8 py-6 text-lg font-bold bg-blue-600 hover:bg-blue-700 shadow-md">
+          Start Grid Challenge
+        </Button>
       </div>
     );
-  }
-
-  if (gameState === 'dot') {
-    return (
-      <div className="flex flex-col items-center justify-center space-y-6 py-6">
+  } else if (gameState === 'dot') {
+    phaseContent = (
+      <div className="flex flex-col items-center justify-center space-y-6 py-2">
         <div className="text-center space-y-1">
-          <span className="text-xs font-bold text-blue-600 uppercase tracking-widest">Round {currentRoundIdx + 1} / {normalizedRounds.length}</span>
-          <h3 className="text-xl font-bold text-gray-900">Memorize the Highlighted Dot</h3>
+          <span className="text-xs font-bold text-blue-600 uppercase tracking-widest">
+            Round {currentRoundIdx + 1} / {normalizedRounds.length}
+          </span>
+          <p className="text-sm font-medium text-gray-700">Memorize the Highlighted Dot</p>
           <p className="text-sm text-gray-500">Pay attention to the blinking yellow dot</p>
         </div>
-
         <div className="relative w-80 h-80 bg-slate-900 rounded-2xl border-4 border-slate-800 shadow-xl overflow-hidden flex items-center justify-center">
           {currentRound.dotPhase.dots.map((dot: any) => {
             const isTarget = dot.id === currentRound.dotPhase.targetDotId;
@@ -455,31 +670,33 @@ const GridChallengeQuestion: React.FC<{ q: any; answer?: any; onAnswer?: (a: any
         </div>
       </div>
     );
-  }
-
-  if (gameState === 'symmetry') {
-    return (
-      <div className="flex flex-col items-center justify-center space-y-6 py-6">
+  } else if (gameState === 'symmetry') {
+    phaseContent = (
+      <div className="flex flex-col items-center justify-center space-y-6 py-2">
         <div className="text-center space-y-1">
-          <span className="text-xs font-bold text-indigo-600 uppercase tracking-widest">Round {currentRoundIdx + 1} / {normalizedRounds.length}</span>
-          <h3 className="text-xl font-bold text-gray-900">{currentRound.symmetryPhase.label || 'Is it Symmetric?'}</h3>
+          <span className="text-xs font-bold text-indigo-600 uppercase tracking-widest">
+            Round {currentRoundIdx + 1} / {normalizedRounds.length}
+          </span>
+          <p className="text-sm font-medium text-gray-700">
+            {currentRound.symmetryPhase.label || 'Is it Symmetric?'}
+          </p>
           <p className="text-sm text-gray-500">Compare the left grid and the right grid</p>
         </div>
-
         <div className="flex items-center gap-6 p-6 bg-slate-900 rounded-2xl border-4 border-slate-800 shadow-xl">
           <RenderSymmetryGrid grid={currentRound.symmetryPhase.gridLeft} />
           <div className="text-2xl font-bold text-slate-500">|</div>
           <RenderSymmetryGrid grid={currentRound.symmetryPhase.gridRight} />
         </div>
-
         <div className="flex gap-4 w-full max-w-sm">
           <button
+            type="button"
             onClick={() => handleSymmetryAnswer(true)}
             className="flex-1 py-4 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold shadow transition-all hover:scale-[1.02]"
           >
             Yes (Symmetric)
           </button>
           <button
+            type="button"
             onClick={() => handleSymmetryAnswer(false)}
             className="flex-1 py-4 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold shadow transition-all hover:scale-[1.02]"
           >
@@ -488,85 +705,92 @@ const GridChallengeQuestion: React.FC<{ q: any; answer?: any; onAnswer?: (a: any
         </div>
       </div>
     );
-  }
-
-  if (gameState === 'recall') {
-    return (
-      <div className="flex flex-col items-center justify-center space-y-6 py-6">
+  } else if (gameState === 'recall') {
+    phaseContent = (
+      <div className="flex flex-col items-center justify-center space-y-6 py-2">
         <div className="text-center space-y-1">
-          <span className="text-xs font-bold text-orange-600 uppercase tracking-widest">Round {currentRoundIdx + 1} / {normalizedRounds.length}</span>
-          <h3 className="text-xl font-bold text-gray-900">Recall Highlighted Dot</h3>
+          <span className="text-xs font-bold text-orange-600 uppercase tracking-widest">
+            Round {currentRoundIdx + 1} / {normalizedRounds.length}
+          </span>
+          <p className="text-sm font-medium text-gray-700">Recall Highlighted Dot</p>
           <p className="text-sm text-gray-500">Click on the dot that was blinking yellow in this round</p>
         </div>
-
         <div className="relative w-80 h-80 bg-slate-900 rounded-2xl border-4 border-slate-800 shadow-xl overflow-hidden">
-          {currentRound.dotPhase.dots.map((dot: any) => {
-            return (
-              <button
-                key={dot.id}
-                onClick={() => handleRecallDot(dot.id)}
-                className="absolute w-6 h-6 rounded-full bg-blue-500/30 hover:bg-blue-400 border border-blue-400 cursor-pointer transition-all transform -translate-x-1/2 -translate-y-1/2 hover:scale-125 flex items-center justify-center"
-                style={{ left: `${dot.x}%`, top: `${dot.y}%` }}
-              >
-                <span className="w-2.5 h-2.5 rounded-full bg-blue-400" />
-              </button>
-            );
-          })}
+          {currentRound.dotPhase.dots.map((dot: any) => (
+            <button
+              key={dot.id}
+              type="button"
+              onClick={() => handleRecallDot(dot.id)}
+              className="absolute w-6 h-6 rounded-full bg-blue-500/30 hover:bg-blue-400 border border-blue-400 cursor-pointer transition-all transform -translate-x-1/2 -translate-y-1/2 hover:scale-125 flex items-center justify-center"
+              style={{ left: `${dot.x}%`, top: `${dot.y}%` }}
+            >
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-400" />
+            </button>
+          ))}
         </div>
       </div>
     );
-  }
+  } else {
+    const correctSymmetry = userAnswers.filter(
+      (ans, idx) => ans.symmetryAnswer === normalizedRounds[idx]?.symmetryPhase.isSymmetric
+    ).length;
+    const correctRecall = userAnswers.filter((ans) => ans.recallCorrect).length;
 
-  const correctSymmetry = userAnswers.filter((ans, idx) => ans.symmetryAnswer === normalizedRounds[idx]?.symmetryPhase.isSymmetric).length;
-  const correctRecall = userAnswers.filter(ans => ans.recallCorrect).length;
-
-  return (
-    <div className="text-center space-y-6 py-8">
-      <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-3xl mx-auto shadow">✓</div>
-      <div className="max-w-md mx-auto space-y-2">
-        <h3 className="text-xl font-bold text-gray-900">Grid Challenge Complete</h3>
+    phaseContent = (
+      <div className="text-center space-y-6 py-4">
+        <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-3xl mx-auto shadow">
+          ✓
+        </div>
         <p className="text-sm text-gray-500">Your answers for this section are registered locally.</p>
-      </div>
-
-      <div className="max-w-xs mx-auto bg-gray-50 border rounded-xl p-4 text-sm text-left space-y-2">
-        <div className="flex justify-between">
-          <span>Symmetry answers:</span>
-          <strong className="text-green-700">{correctSymmetry} / {normalizedRounds.length}</strong>
+        {timedOut && (
+          <p className="text-red-500 font-semibold">Overall time limit reached</p>
+        )}
+        <div className="max-w-xs mx-auto bg-gray-50 border rounded-xl p-4 text-sm text-left space-y-2">
+          <div className="flex justify-between">
+            <span>Symmetry answers:</span>
+            <strong className="text-green-700">
+              {correctSymmetry} / {normalizedRounds.length}
+            </strong>
+          </div>
+          <div className="flex justify-between">
+            <span>Recall dot memory:</span>
+            <strong className="text-green-700">
+              {correctRecall} / {normalizedRounds.length}
+            </strong>
+          </div>
         </div>
-        <div className="flex justify-between">
-          <span>Recall dot memory:</span>
-          <strong className="text-green-700">{correctRecall} / {normalizedRounds.length}</strong>
-        </div>
-      </div>
-
-      <div>
         <Button onClick={handleStart} variant="outline" className="px-6 py-2">
           Restart Section
         </Button>
       </div>
-    </div>
+    );
+  }
+
+  return (
+    <ChallengeShell
+      title={q.title || 'Grid Challenge'}
+      questionNumber={shellRoundNumber}
+      totalQuestions={shellRoundTotal}
+      timeRemaining={gameState === 'idle' ? undefined : timeRemaining}
+      totalTime={gameState === 'idle' ? undefined : overallSeconds}
+    >
+      {phaseContent}
+    </ChallengeShell>
   );
 };
 
-const InductiveQuestion: React.FC<{ q: any; answer: string[]; onAnswer: (a: string[]) => void }> = ({ q, answer, onAnswer }) => {
-  const questions = q.questionsData || [];
-  const normalizedQuestions = questions.map((qd: any, index: number) => ({
-    id: qd.id || `qd-${index}`,
-    examplePair: qd.examplePair || {
-      gridA: qd.grid_a || [],
-      gridB: qd.grid_b || [],
-    },
-    options: qd.options || [
-      { id: 'A', grid: qd.option_a || [] },
-      { id: 'B', grid: qd.option_b || [] },
-      { id: 'C', grid: qd.option_c || [] },
-      { id: 'D', grid: qd.option_d || [] },
-    ],
-    correctOptionIds: qd.correctOptionIds || qd.correct_option_ids || [],
-    rule: qd.rule || qd.rule_note || '',
-  }));
+const InductiveQuestion: React.FC<{
+  q: any;
+  answer: string[];
+  onAnswer: (a: string[]) => void;
+  questionNumber?: number;
+  totalQuestions?: number;
+}> = ({ q, answer, onAnswer, questionNumber, totalQuestions }) => {
+  const normalizedQuestions = normalizeInductiveQuestions(q);
 
   const [activeQuestionIdx, setActiveQuestionIdx] = useState(0);
+  const [submitted, setSubmitted] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
 
   if (normalizedQuestions.length === 0) {
     return (
@@ -577,40 +801,81 @@ const InductiveQuestion: React.FC<{ q: any; answer: string[]; onAnswer: (a: stri
   }
 
   const activeQuestion = normalizedQuestions[activeQuestionIdx];
+  const totalSeconds = Math.round((activeQuestion.displayDurationMs ?? 30000) / 1000);
+  const correctIds: string[] = activeQuestion.correctOptionIds?.length
+    ? activeQuestion.correctOptionIds
+    : activeQuestion.options.filter((o: any) => o.isCorrect).map((o: any) => o.id);
+
+  const handleTimeout = useCallback(() => {
+    setTimedOut(true);
+    setSubmitted(true);
+  }, []);
+
+  const { timeRemaining, resetTimer } = useCountdown(totalSeconds, handleTimeout);
+
+  useEffect(() => {
+    setSubmitted(false);
+    setTimedOut(false);
+    resetTimer();
+  }, [activeQuestionIdx, q.id, resetTimer]);
 
   const toggle = (opt: string) => {
-    const next = answer.includes(opt) ? answer.filter(x => x !== opt) : answer.length < 2 ? [...answer, opt] : answer;
+    if (submitted || timedOut) return;
+    const next = answer.includes(opt)
+      ? answer.filter((x) => x !== opt)
+      : answer.length < 2
+        ? [...answer, opt]
+        : answer;
     onAnswer(next);
   };
 
+  const handleSubmit = () => {
+    if (answer.length !== 2) return;
+    setSubmitted(true);
+  };
+
+  const isCorrect =
+    !timedOut &&
+    answer.length === 2 &&
+    correctIds.length === 2 &&
+    correctIds.every((id) => answer.includes(id)) &&
+    answer.every((id) => correctIds.includes(id));
+
+  const correctPoints = q.scoringCorrect ?? CHALLENGE_POINTS.correct;
+
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center bg-gray-50 p-3 rounded-lg border">
-        <div>
-          <h3 className="font-bold text-gray-800">Question {activeQuestionIdx + 1} of {normalizedQuestions.length}</h3>
-          <p className="text-xs text-gray-500">{q.description || 'Find the rule and choose matching option grids'}</p>
+    <ChallengeShell
+      title={q.title || 'Inductive Challenge'}
+      questionNumber={questionNumber ?? activeQuestionIdx + 1}
+      totalQuestions={totalQuestions ?? normalizedQuestions.length}
+      timeRemaining={timeRemaining}
+      totalTime={totalSeconds}
+    >
+      {normalizedQuestions.length > 1 && (
+        <div className="flex gap-1 flex-wrap">
+          {normalizedQuestions.map((_: any, idx: number) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => setActiveQuestionIdx(idx)}
+              className={`px-3 py-1.5 rounded text-xs font-semibold border ${
+                activeQuestionIdx === idx
+                  ? 'bg-blue-600 border-blue-600 text-white shadow'
+                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              Q {idx + 1}
+            </button>
+          ))}
         </div>
-        {normalizedQuestions.length > 1 && (
-          <div className="flex gap-1">
-            {normalizedQuestions.map((_: any, idx: number) => (
-              <button
-                key={idx}
-                onClick={() => setActiveQuestionIdx(idx)}
-                className={`px-3 py-1.5 rounded text-xs font-semibold border ${
-                  activeQuestionIdx === idx
-                    ? 'bg-blue-600 border-blue-600 text-white shadow'
-                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                Q {idx + 1}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      )}
+
+      <p className="text-xs text-gray-500">{q.description || 'Find the rule and choose matching option grids'}</p>
 
       <div>
-        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Example Pair (demonstrating the rule)</h4>
+        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
+          Example Pair (demonstrating the rule)
+        </h4>
         <div className="flex gap-6 items-center justify-center p-6 bg-gray-50 rounded-xl border border-gray-200">
           <ReadOnlyShapeGrid grid={activeQuestion.examplePair.gridA} label="Grid A" />
           <div className="text-2xl font-bold text-gray-400">→</div>
@@ -626,16 +891,22 @@ const InductiveQuestion: React.FC<{ q: any; answer: string[]; onAnswer: (a: stri
             return (
               <button
                 key={opt.id}
+                type="button"
+                disabled={submitted || timedOut}
                 onClick={() => toggle(opt.id)}
                 className={`flex flex-col items-center p-4 rounded-xl border-2 transition-all ${
                   isSelected
                     ? 'border-green-600 bg-green-50 shadow-md scale-[1.02]'
                     : 'border-gray-200 hover:border-gray-300 bg-white hover:bg-gray-50'
-                }`}
+                } disabled:opacity-75`}
               >
                 <div className="flex justify-between w-full mb-2">
                   <span className="font-bold text-sm text-gray-700">Option {opt.id}</span>
-                  {isSelected && <span className="text-xs font-bold text-green-700 bg-green-200 px-2 py-0.5 rounded-full">✓ Selected</span>}
+                  {isSelected && (
+                    <span className="text-xs font-bold text-green-700 bg-green-200 px-2 py-0.5 rounded-full">
+                      ✓ Selected
+                    </span>
+                  )}
                 </div>
                 <ReadOnlyShapeGrid grid={opt.grid} />
               </button>
@@ -643,28 +914,44 @@ const InductiveQuestion: React.FC<{ q: any; answer: string[]; onAnswer: (a: stri
           })}
         </div>
       </div>
-    </div>
+
+      {!submitted && !timedOut && (
+        <Button onClick={handleSubmit} disabled={answer.length !== 2} className="w-full">
+          Submit Answer
+        </Button>
+      )}
+
+      {(submitted || timedOut) && (
+        <p className={isCorrect ? 'text-green-600 font-semibold' : 'text-red-500 font-semibold'}>
+          {timedOut
+            ? "Time's up — Incorrect"
+            : isCorrect
+              ? `Correct! +${correctPoints} pts`
+              : 'Incorrect'}
+        </p>
+      )}
+    </ChallengeShell>
   );
 };
 
-const MotionQuestion: React.FC<{ q: any; answer?: any; onAnswer?: (a: any) => void }> = ({ q, answer, onAnswer }) => {
+const MotionQuestion: React.FC<{
+  q: any;
+  answer?: any;
+  onAnswer?: (a: any) => void;
+  questionNumber?: number;
+  totalQuestions?: number;
+}> = ({ q, answer, onAnswer, questionNumber, totalQuestions }) => {
+  const motionNorm = normalizeMotionQuestion(q);
   const [activeLevelIdx, setActiveLevelIdx] = useState(0);
-  const levels = q.levelsData || [];
-  const normalizedLevels: Array<{
-    id: string;
-    rows: number;
-    cols: number;
-    grid: any[];
-    maxMoves: number;
-    label: string;
-  }> = levels.map((lvl: any, index: number) => ({
-    id: String(lvl.id || `lvl-${index}`),
-    rows: lvl.rows || 6,
-    cols: lvl.cols || 4,
-    grid: lvl.grid || [],
-    maxMoves: lvl.maxMoves || lvl.max_moves || 10,
-    label: lvl.label || `Level ${index + 1}`,
-  }));
+  const [timedOut, setTimedOut] = useState(false);
+  const totalTime = motionNorm.timeDurationSeconds;
+
+  const handleTimeout = useCallback(() => {
+    setTimedOut(true);
+  }, []);
+
+  const { timeRemaining } = useCountdown(totalTime, handleTimeout);
+  const normalizedLevels = motionNorm.levels;
 
   const [solvedLevels, setSolvedLevels] = useState<Record<string, { solved: boolean; moves: number }>>(
     answer?.solvedLevels || {}
@@ -859,10 +1146,19 @@ const MotionQuestion: React.FC<{ q: any; answer?: any; onAnswer?: (a: any) => vo
   const validMoves = getAdjacentEmptyCoords();
 
   return (
-    <div className="space-y-4">
+    <ChallengeShell
+      title={q.title || activeLevel.label}
+      questionNumber={questionNumber ?? activeLevelIdx + 1}
+      totalQuestions={totalQuestions ?? normalizedLevels.length}
+      timeRemaining={timeRemaining}
+      totalTime={totalTime}
+    >
+      {timedOut && (
+        <p className="text-red-500 font-semibold text-sm">Overall time limit reached</p>
+      )}
       <div className="flex justify-between items-center bg-gray-50 p-3 rounded-lg border">
         <div className="space-y-0.5">
-          <h3 className="font-bold text-gray-800">{activeLevel.label}</h3>
+          <p className="font-bold text-gray-800">{activeLevel.label}</p>
           <div className="flex gap-2 items-center text-xs font-semibold">
             <span className={movesCount > activeLevel.maxMoves ? 'text-red-600 animate-pulse' : 'text-gray-600'}>
               Moves: {movesCount} / {activeLevel.maxMoves}
@@ -936,7 +1232,7 @@ const MotionQuestion: React.FC<{ q: any; answer?: any; onAnswer?: (a: any) => vo
         )}
       </div>
       <p className="text-xs text-gray-400 text-center italic">Interactive game view — connect to game engine to play</p>
-    </div>
+    </ChallengeShell>
   );
 };
 
@@ -949,15 +1245,11 @@ const ScoreScreen: React.FC<{ questions: any[]; answers: Record<string, any>; te
     if (q.type === 'switch_challenge' && a === q.correct) correct++;
     if (q.type === 'inductive_challenge' && Array.isArray(a) && a.length === 2 && q.correct.every((c: string) => a.includes(c))) correct++;
     if (q.type === 'grid_challenge' && a && Array.isArray(a.rounds)) {
-      const rounds = q.roundsData || [];
-      const normalizedRounds = rounds.map((r: any) => ({
-        isSymmetric: r.symmetryPhase?.isSymmetric !== undefined
-          ? r.symmetryPhase.isSymmetric
-          : r.is_symmetric !== undefined
-          ? r.is_symmetric
-          : false,
-      }));
-      const symmetryAllCorrect = a.rounds.every((ans: any, idx: number) => ans.symmetryAnswer === normalizedRounds[idx]?.isSymmetric);
+      const normalizedRounds = normalizeGridQuestion(q).rounds;
+      const symmetryAllCorrect = a.rounds.every(
+        (ans: any, idx: number) =>
+          ans.symmetryAnswer === normalizedRounds[idx]?.symmetryPhase?.isSymmetric
+      );
       const recallAllCorrect = a.rounds.every((ans: any) => ans.recallCorrect);
       if (symmetryAllCorrect && recallAllCorrect && a.rounds.length === normalizedRounds.length) {
         correct++;
@@ -1007,8 +1299,10 @@ const ScoreScreen: React.FC<{ questions: any[]; answers: Record<string, any>; te
 export const MockTestViewer: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { mockTests } = useMockTestStore();
-  const test = mockTests.find(t => t.id === id);
+  const { mockTests, setMockTests } = useMockTestStore();
+  const testFromStore = mockTests.find((t) => t.id === id);
+  const [test, setTest] = useState(testFromStore ?? null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [questions, setQuestions] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -1019,28 +1313,56 @@ export const MockTestViewer: React.FC = () => {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
+    if (testFromStore) setTest(testFromStore);
+  }, [testFromStore]);
+
+  useEffect(() => {
     if (!id) return;
     let active = true;
-    const fetchQuestions = async () => {
+    const load = async () => {
       setIsLoading(true);
+      setLoadError(null);
       try {
+        let testMeta = mockTests.find((t) => t.id === id) ?? null;
+        if (!testMeta) {
+          testMeta = await mockTestService.getMockTestById(id);
+          if (testMeta && active) {
+            setMockTests([...mockTests.filter((t) => t.id !== id), testMeta]);
+          }
+        }
+        if (active && testMeta) {
+          setTest(testMeta);
+          setTimeLeft(testMeta.durationMinutes * 60);
+        }
+
         const data = await mockTestService.getQuestionsForTest(id);
-        if (active) {
-          const enabledTypes = ((test as any)?.enabledGameTypes ?? []) as string[];
-          const filtered = data.filter((q) => enabledTypes.includes(q.type));
-          setQuestions(filtered);
+        if (!active) return;
+
+        const enabledTypes = (testMeta?.enabledGameTypes ?? []) as string[];
+        const filtered =
+          enabledTypes.length > 0
+            ? data.filter((q) => enabledTypes.includes(q.type))
+            : data;
+
+        setQuestions(filtered);
+        setCurrent(0);
+        if (filtered.length === 0 && data.length > 0) {
+          setLoadError('Questions exist but none match this test’s enabled game types. Edit the test and check game types.');
+        } else if (filtered.length === 0) {
+          setLoadError('No questions in this test yet. Add questions from Mock Tests → Edit test.');
         }
       } catch (err) {
-        console.error('Error fetching questions for test:', err);
+        console.error('Error loading test:', err);
+        if (active) setLoadError('Failed to load test questions.');
       } finally {
         if (active) setIsLoading(false);
       }
     };
-    fetchQuestions();
+    load();
     return () => {
       active = false;
     };
-  }, [id, test]);
+  }, [id, mockTests, setMockTests]);
 
   useEffect(() => {
     if (submitted) return;
@@ -1051,7 +1373,7 @@ export const MockTestViewer: React.FC = () => {
     return () => clearInterval(timerRef.current!);
   }, [submitted]);
 
-  if (!test) return (
+  if (!isLoading && !test) return (
     <div className="flex items-center justify-center h-screen">
       <div className="text-center">
         <p className="text-gray-500 mb-4">Test not found</p>
@@ -1069,27 +1391,94 @@ export const MockTestViewer: React.FC = () => {
     </div>
   );
 
+  if (!test) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <p className="text-gray-500">Loading test…</p>
+      </div>
+    );
+  }
+
   if (submitted) return (
     <ScoreScreen questions={questions} answers={answers} testTitle={test.title}
       onRetry={() => { setSubmitted(false); setAnswers({}); setCurrent(0); setTimeLeft(test.durationMinutes * 60); }} />
   );
 
+  if (!isLoading && questions.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-50 p-6">
+        <div className="max-w-md text-center space-y-4">
+          <h2 className="text-xl font-bold text-gray-900">{test?.title ?? 'Mock Test'}</h2>
+          <p className="text-gray-600">{loadError ?? 'No questions available for this exam.'}</p>
+          <Button onClick={() => navigate('/admin/mock-tests')}>Back to Mock Tests</Button>
+        </div>
+      </div>
+    );
+  }
+
   const q = questions[current];
   const mm = String(Math.floor(timeLeft / 60)).padStart(2, '0');
   const ss = String(timeLeft % 60).padStart(2, '0');
-  const progress = ((current + 1) / questions.length) * 100;
+  const progress = questions.length ? ((current + 1) / questions.length) * 100 : 0;
 
-  const setAnswer = (val: any) => setAnswers(prev => ({ ...prev, [q.id]: val }));
+  const setAnswer = (val: any) => {
+    if (!q) return;
+    setAnswers((prev) => ({ ...prev, [q.id]: val }));
+  };
 
   const renderQuestion = () => {
     if (!q) return <p className="text-gray-400 text-center py-10">No questions in this section.</p>;
+    const questionNumber = current + 1;
+    const totalQuestionCount = questions.length;
+    const chrome: QuestionChromeProps = { questionNumber, totalQuestions: totalQuestionCount };
     switch (q.type) {
-      case 'puzzle': return <PuzzleQuestion q={q} answer={answers[q.id] ?? ''} onAnswer={setAnswer} />;
-      case 'switch_challenge': return <SwitchQuestion q={q} answer={answers[q.id] ?? ''} onAnswer={setAnswer} />;
-      case 'grid_challenge': return <GridChallengeQuestion q={q} answer={answers[q.id]} onAnswer={setAnswer} />;
-      case 'inductive_challenge': return <InductiveQuestion q={q} answer={answers[q.id] ?? []} onAnswer={setAnswer} />;
-      case 'motion_challenge': return <MotionQuestion q={q} answer={answers[q.id]} onAnswer={setAnswer} />;
-      default: return null;
+      case 'puzzle':
+        return (
+          <PuzzleQuestion
+            q={q}
+            answer={answers[q.id] ?? ''}
+            onAnswer={setAnswer}
+            {...chrome}
+          />
+        );
+      case 'switch_challenge':
+        return (
+          <SwitchQuestion
+            q={q}
+            answer={answers[q.id] ?? ''}
+            onAnswer={setAnswer}
+            {...chrome}
+          />
+        );
+      case 'grid_challenge':
+        return (
+          <GridChallengeQuestion
+            q={q}
+            answer={answers[q.id]}
+            onAnswer={setAnswer}
+            {...chrome}
+          />
+        );
+      case 'inductive_challenge':
+        return (
+          <InductiveQuestion
+            q={q}
+            answer={answers[q.id] ?? []}
+            onAnswer={setAnswer}
+            {...chrome}
+          />
+        );
+      case 'motion_challenge':
+        return (
+          <MotionQuestion
+            q={q}
+            answer={answers[q.id]}
+            onAnswer={setAnswer}
+            {...chrome}
+          />
+        );
+      default:
+        return null;
     }
   };
 

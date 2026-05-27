@@ -8,16 +8,6 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  AlertCircle,
-  Save,
-  RotateCcw,
   Plus,
   Trash2,
   Eye,
@@ -25,8 +15,14 @@ import {
   Grid3x3,
   ChevronDown,
   ChevronUp,
-  Wand2,
 } from 'lucide-react';
+import {
+  BuilderPageHeader,
+  BuilderValidationAlerts,
+  BuilderActionBar,
+  GameInfoCard,
+  SaveToMockTestDialog,
+} from '../components/builder';
 import {
   GridChallengeRound,
   DotPosition,
@@ -579,60 +575,22 @@ export const GridChallengeBuilder: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-3xl font-bold text-gray-900">Grid Challenge Builder</h1>
-        <p className="text-gray-600">
-          Create dot-memory + symmetry-check rounds (Power of Attention & Memory)
-        </p>
-      </div>
+      <BuilderPageHeader
+        title="Grid Challenge Builder"
+        description="Create dot-memory + symmetry-check rounds (Power of Attention & Memory)"
+      />
 
-      {/* Validation errors */}
-      {validationErrors.length > 0 && (
-        <Card className="border-red-400 bg-red-50">
-          <CardContent className="pt-5">
-            <div className="flex gap-3">
-              <AlertCircle className="text-red-500 h-5 w-5 flex-shrink-0 mt-0.5" />
-              <ul className="text-sm text-red-700 space-y-0.5">
-                {validationErrors.map((e, i) => (
-                  <li key={i}>{e}</li>
-                ))}
-              </ul>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <BuilderValidationAlerts errors={validationErrors} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* ── Left column: rounds ── */}
         <div className="lg:col-span-2 space-y-4">
-          {/* Game Info */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Game Information</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Title</label>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. Grid Challenge Level 1"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Description</label>
-                <textarea
-                  rows={2}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe the challenge…"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                />
-              </div>
-            </CardContent>
-          </Card>
+          <GameInfoCard
+            title={title}
+            description={description}
+            onTitleChange={setTitle}
+            onDescriptionChange={setDescription}
+            titlePlaceholder="e.g. Grid Challenge Level 1"
+          />
 
           {/* Rounds */}
           <div className="space-y-3">
@@ -654,24 +612,11 @@ export const GridChallengeBuilder: React.FC = () => {
             </Button>
           )}
 
-          {/* Action buttons */}
-          <Button
-            onClick={() => setShowDialog(true)}
-            className="w-full gap-2 h-10"
-            size="lg"
-          >
-            <Save size={18} /> Save Game
-          </Button>
-          <Button
-            onClick={handleAutoGenerate}
-            variant="default"
-            className="w-full gap-2 h-10 bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            <Wand2 size={18} /> Auto Generate Challenge
-          </Button>
-          <Button onClick={resetForm} variant="outline" className="w-full">
-            <RotateCcw size={16} className="mr-2" /> Reset All
-          </Button>
+          <BuilderActionBar
+            onAutoGenerate={handleAutoGenerate}
+            onReset={resetForm}
+            onSave={() => setShowDialog(true)}
+          />
         </div>
 
         {/* ── Right column: settings ── */}
@@ -764,42 +709,17 @@ export const GridChallengeBuilder: React.FC = () => {
         </div>
       </div>
 
-      {/* Save Dialog */}
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Save Grid Challenge</DialogTitle>
-            <DialogDescription>
-              Select a mock test to attach this game to
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-gray-700">Mock Test</label>
-              <select
-                value={selectedMockTest}
-                onChange={(e) => setSelectedMockTest(e.target.value)}
-                className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">-- Select a test --</option>
-                {mockTests.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.title}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setShowDialog(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleSave} disabled={isSaving || !selectedMockTest}>
-                {isSaving ? 'Saving…' : 'Save'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <SaveToMockTestDialog
+        open={showDialog}
+        onOpenChange={setShowDialog}
+        title="Save Grid Challenge"
+        description="Select a mock test to attach this game to"
+        mockTests={mockTests}
+        selectedMockTest={selectedMockTest}
+        onSelectedMockTestChange={setSelectedMockTest}
+        onSave={handleSave}
+        isSaving={isSaving}
+      />
     </div>
   );
 };

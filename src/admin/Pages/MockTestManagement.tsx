@@ -13,54 +13,27 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useForm } from 'react-hook-form';
 import {
   Plus, Edit2, Trash2, Eye, EyeOff, Search, Loader2,
-  BarChart3, Zap, Grid3x3, Shapes, Move, ExternalLink,
+  ExternalLink, List,
 } from 'lucide-react';
+import {
+  GameTypePill,
+  GameTypeSelector,
+  GAME_TYPE_LEGACY_CONFIG,
+} from '../components/mockTest/gameTypeLegacyConfig';
+
+/** @deprecated Import from gameTypeLegacyConfig or constants/gameTypes */
+export const GAME_TYPE_CONFIG = GAME_TYPE_LEGACY_CONFIG;
 import { mockTestService } from '../services';
 import { useMockTestStore } from '../store';
+import { useMockTestQuestionsStore } from '../store/mockTestQuestionsStore';
 import { MockTest } from '../types';
 import { useNavigate } from 'react-router-dom';
 
-// ─── Game type config ─────────────────────────────────────────────────────────
+// ─── Game type config (legacy pill styles for mock tests) ─────────────────────
 
-export const GAME_TYPE_CONFIG = [
-  {
-    id: 'puzzle',
-    label: 'Puzzle Builder',
-    icon: <BarChart3 size={15} />,
-    color: 'bg-blue-100 text-blue-800 border-blue-200',
-    activeColor: 'bg-blue-600 text-white',
-  },
-  {
-    id: 'switch_challenge',
-    label: 'Switch Challenge',
-    icon: <Zap size={15} />,
-    color: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-    activeColor: 'bg-yellow-500 text-white',
-  },
-  {
-    id: 'grid_challenge',
-    label: 'Grid Challenge',
-    icon: <Grid3x3 size={15} />,
-    color: 'bg-green-100 text-green-800 border-green-200',
-    activeColor: 'bg-green-600 text-white',
-  },
-  {
-    id: 'inductive_challenge',
-    label: 'Inductive Challenge',
-    icon: <Shapes size={15} />,
-    color: 'bg-purple-100 text-purple-800 border-purple-200',
-    activeColor: 'bg-purple-600 text-white',
-  },
-  {
-    id: 'motion_challenge',
-    label: 'Motion Challenge',
-    icon: <Move size={15} />,
-    color: 'bg-orange-100 text-orange-800 border-orange-200',
-    activeColor: 'bg-orange-500 text-white',
-  },
-] as const;
+import type { GameTypeId } from '../constants/gameTypes';
 
-export type GameTypeId = typeof GAME_TYPE_CONFIG[number]['id'];
+export type { GameTypeId };
 
 // ─── Form data ────────────────────────────────────────────────────────────────
 
@@ -71,70 +44,6 @@ interface CreateTestFormData {
   category?: string;
   difficulty?: 'easy' | 'medium' | 'hard';
 }
-
-// ─── GameTypePill ─────────────────────────────────────────────────────────────
-
-const GameTypePill: React.FC<{ gameType: string; small?: boolean }> = ({ gameType, small }) => {
-  const cfg = GAME_TYPE_CONFIG.find((g) => g.id === gameType);
-  if (!cfg) return null;
-  return (
-    <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium ${cfg.color} ${small ? 'text-[10px]' : ''}`}
-    >
-      {cfg.icon} {small ? cfg.label.split(' ')[0] : cfg.label}
-    </span>
-  );
-};
-
-// ─── GameTypeSelector ─────────────────────────────────────────────────────────
-
-const GameTypeSelector: React.FC<{
-  selected: GameTypeId[];
-  onChange: (types: GameTypeId[]) => void;
-}> = ({ selected, onChange }) => {
-  const toggle = (id: GameTypeId) => {
-    onChange(
-      selected.includes(id)
-        ? selected.filter((s) => s !== id)
-        : [...selected, id]
-    );
-  };
-
-  return (
-    <div className="space-y-2">
-      <label className="block text-sm font-medium text-gray-700">
-        Game Types included in this test
-      </label>
-      <div className="flex flex-wrap gap-2">
-        {GAME_TYPE_CONFIG.map((g) => {
-          const active = selected.includes(g.id as GameTypeId);
-          return (
-            <button
-              key={g.id}
-              type="button"
-              onClick={() => toggle(g.id as GameTypeId)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border-2 text-sm font-medium transition-all ${
-                active
-                  ? g.activeColor + ' border-transparent shadow-sm scale-105'
-                  : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              {g.icon} {g.label}
-              {active && (
-                <span className="ml-1 w-4 h-4 rounded-full bg-white/30 flex items-center justify-center text-[10px]">
-                  ✓
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-      {selected.length === 0 && (
-        <p className="text-xs text-amber-600">Select at least one game type</p>
-      )}
-    </div>
-  );
-};
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
@@ -153,6 +62,8 @@ export const MockTestManagement: React.FC = () => {
   const [selectedGameTypes, setSelectedGameTypes] = useState<GameTypeId[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+
+  const { getQuestions, deleteTestQuestions } = useMockTestQuestionsStore();
 
   const { register, handleSubmit, reset, formState: { errors } } =
     useForm<CreateTestFormData>({ defaultValues: { difficulty: 'medium' } });
@@ -194,17 +105,19 @@ export const MockTestManagement: React.FC = () => {
       const payload = {
         ...data,
         enabledGameTypes: selectedGameTypes,
-        totalQuestions: 0,
-        published: false,
+        totalQuestions: editingTest ? getQuestions(editingTest.id).length : 0,
+        published: editingTest?.published ?? false,
       } as any;
       if (editingTest) {
         const updated = await mockTestService.updateMockTest(editingTest.id, payload);
         updateMockTest(editingTest.id, updated);
+        handleCloseDialog();
       } else {
-        const newTest = await mockTestService.createMockTest(payload);
+        const newTest = await mockTestService.createMockTest({ ...payload, published: false });
         addMockTest(newTest);
+        handleCloseDialog();
+        navigate(`/admin/mock-tests/${newTest.id}`);
       }
-      handleCloseDialog();
     } catch {
       setError('Failed to save mock test');
     }
@@ -214,6 +127,7 @@ export const MockTestManagement: React.FC = () => {
     if (!confirm('Delete this mock test?')) return;
     try {
       await mockTestService.deleteMockTest(id);
+      deleteTestQuestions(id);
       deleteMockTest(id);
     } catch {
       setError('Failed to delete');
@@ -228,6 +142,10 @@ export const MockTestManagement: React.FC = () => {
     } catch {
       setError('Failed to update status');
     }
+  };
+
+  const handleViewQuestions = (testId: string) => {
+    navigate(`/admin/mock-tests/${testId}`);
   };
 
   const handleEdit = (test: MockTest) => {
@@ -248,6 +166,13 @@ export const MockTestManagement: React.FC = () => {
     setEditingTest(null);
     setSelectedGameTypes([]);
     reset({ difficulty: 'medium' });
+  };
+
+  const openCreateDialog = () => {
+    setEditingTest(null);
+    reset({ title: '', description: '', durationMinutes: 30, category: '', difficulty: 'medium' });
+    setSelectedGameTypes([]);
+    setIsDialogOpen(true);
   };
 
   const handleOpenTest = (id: string) => {
@@ -285,24 +210,16 @@ export const MockTestManagement: React.FC = () => {
 
             <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) handleCloseDialog(); }}>
               <DialogTrigger asChild>
-                <Button
-                  onClick={() => {
-                    setEditingTest(null);
-                    reset({ title: '', description: '', durationMinutes: 30, category: '', difficulty: 'medium' });
-                    setSelectedGameTypes([]);
-                    setIsDialogOpen(true);
-                  }}
-                  className="gap-2"
-                >
+                <Button onClick={openCreateDialog} className="gap-2">
                   <Plus size={18} /> Create Test
                 </Button>
               </DialogTrigger>
 
               <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>{editingTest ? 'Edit Mock Test' : 'Create New Mock Test'}</DialogTitle>
+                  <DialogTitle>{editingTest ? 'Edit assessment' : 'Create assessment'}</DialogTitle>
                   <DialogDescription>
-                    Configure the test and choose which game types to include
+                    Set up the assessment. Add and manage questions on the detail page after saving.
                   </DialogDescription>
                 </DialogHeader>
 
@@ -367,21 +284,10 @@ export const MockTestManagement: React.FC = () => {
                     />
                   </div>
 
-                  {/* Preview */}
-                  {selectedGameTypes.length > 0 && (
-                    <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm text-blue-800">
-                      <strong>This test will include:</strong>
-                      <ul className="mt-1 space-y-0.5">
-                        {selectedGameTypes.map((gId) => {
-                          const cfg = GAME_TYPE_CONFIG.find((g) => g.id === gId)!;
-                          return (
-                            <li key={gId} className="flex items-center gap-1.5">
-                              {cfg.icon} {cfg.label}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
+                  {!editingTest && selectedGameTypes.length > 0 && (
+                    <p className="text-sm text-blue-700 bg-blue-50 border border-blue-100 rounded-lg p-3">
+                      After creating, you will be taken to the assessment page to add questions by round.
+                    </p>
                   )}
 
                   <div className="flex justify-end gap-3 pt-2">
@@ -389,7 +295,7 @@ export const MockTestManagement: React.FC = () => {
                       Cancel
                     </Button>
                     <Button type="submit" disabled={selectedGameTypes.length === 0}>
-                      {editingTest ? 'Update Test' : 'Create Test'}
+                      {editingTest ? 'Save settings' : 'Create & add questions'}
                     </Button>
                   </div>
                 </form>
@@ -413,7 +319,7 @@ export const MockTestManagement: React.FC = () => {
           ) : paginated.length === 0 ? (
             <div className="text-center py-16">
               <p className="text-gray-500 mb-3">No tests yet. Create your first mock test!</p>
-              <Button onClick={() => setIsDialogOpen(true)} className="gap-2">
+              <Button onClick={openCreateDialog} className="gap-2">
                 <Plus size={16} /> Create Test
               </Button>
             </div>
@@ -436,7 +342,13 @@ export const MockTestManagement: React.FC = () => {
                       <TableRow key={test.id}>
                         <TableCell>
                           <div>
-                            <p className="font-medium">{test.title}</p>
+                            <button
+                              type="button"
+                              className="font-medium text-left text-blue-700 hover:underline"
+                              onClick={() => handleViewQuestions(test.id)}
+                            >
+                              {test.title}
+                            </button>
                             <p className="text-sm text-gray-500">{test.description}</p>
                             {test.category && (
                               <span className="text-xs text-gray-400">{test.category}</span>
@@ -451,7 +363,7 @@ export const MockTestManagement: React.FC = () => {
                           </div>
                         </TableCell>
                         <TableCell>{test.durationMinutes} min</TableCell>
-                        <TableCell>{test.totalQuestions}</TableCell>
+                        <TableCell>{getQuestions(test.id).length || test.totalQuestions}</TableCell>
                         <TableCell>
                           <span
                             className={`px-2 py-1 rounded-full text-xs font-semibold ${
@@ -466,10 +378,19 @@ export const MockTestManagement: React.FC = () => {
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
                             <Button
+                              variant="outline"
+                              size="sm"
+                              className="gap-1 text-blue-700 border-blue-200"
+                              onClick={() => handleViewQuestions(test.id)}
+                            >
+                              <List size={14} />
+                              Questions
+                            </Button>
+                            <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => handleOpenTest(test.id)}
-                              title="Open as mock test"
+                              title="Preview exam"
                             >
                               <ExternalLink size={15} />
                             </Button>
