@@ -519,7 +519,10 @@ export const mockTestService = {
                 description: q.description || 'Find the rule and choose matching option grids',
                 options: ['A', 'B', 'C', 'D'],
                 correct: qList?.[0]?.correct_option_ids || [],
-                questionsData: qList || [],
+                questionsData: (qList || []).map((item) => ({
+                  ...item,
+                  display_duration_ms: q.display_duration_ms,
+                })),
               });
             }
           } else if (link.game_type === 'motion_challenge') {

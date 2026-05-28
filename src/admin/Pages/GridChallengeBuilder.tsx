@@ -160,6 +160,69 @@ const DotCanvas: React.FC<DotCanvasProps> = ({
           Clear all
         </Button>
       </div>
+
+      {dots.length > 0 && (
+        <div className="bg-gray-50 p-2.5 rounded-md border text-xs space-y-2 mt-2">
+          <span className="font-semibold text-gray-700 block">Fine-tune dot coordinates (X / Y in %)</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-40 overflow-y-auto pr-1">
+            {dots.map((dot, idx) => {
+              const isTarget = dot.id === targetDotId;
+              return (
+                <div key={dot.id} className="flex items-center justify-between bg-white p-1.5 rounded border">
+                  <span className="font-medium text-gray-500 w-10">Dot {idx + 1}</span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-gray-400">X</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={dot.x}
+                      onChange={(e) => {
+                        const val = clamp(Number(e.target.value) || 0, 0, 100);
+                        onDotsChange(dots.map(d => d.id === dot.id ? { ...d, x: val } : d));
+                      }}
+                      className="w-9 border rounded px-0.5 py-0.5 text-center focus:ring-1 focus:ring-blue-400"
+                    />
+                    <span className="text-[10px] text-gray-400">Y</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={dot.y}
+                      onChange={(e) => {
+                        const val = clamp(Number(e.target.value) || 0, 0, 100);
+                        onDotsChange(dots.map(d => d.id === dot.id ? { ...d, y: val } : d));
+                      }}
+                      className="w-9 border rounded px-0.5 py-0.5 text-center focus:ring-1 focus:ring-blue-400"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-1 cursor-pointer">
+                      <input
+                        type="radio"
+                        name={`targetDot-${targetDotId || 'none'}`}
+                        checked={isTarget}
+                        onChange={() => onTargetChange(dot.id)}
+                        className="cursor-pointer"
+                        title="Set as target"
+                      />
+                      <span className="text-[9px] text-gray-400">Target</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={(e) => handleRemoveDot(dot.id, e)}
+                      className="text-red-500 hover:text-red-700 font-bold px-1 ml-1"
+                      title="Delete dot"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -265,6 +328,68 @@ const SymmetryEditor: React.FC<SymmetryEditorProps> = ({
         <GridEditor grid={left} onChange={onLeftChange} label="Left Grid" />
         <div className="flex items-center text-gray-400 font-bold text-xl">vs</div>
         <GridEditor grid={right} onChange={onRightChange} label="Right Grid" />
+      </div>
+
+      <div className="flex flex-wrap gap-2 justify-center py-2 bg-gray-50 border-x border-b rounded-b-lg -mt-4 px-4 text-xs">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="text-xs"
+          onClick={() => {
+            onRightChange(left.map(row => [...row]));
+          }}
+        >
+          Copy Left → Right
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="text-xs"
+          onClick={() => {
+            const reflected = left.map(row => [...row].reverse());
+            onRightChange(reflected);
+          }}
+        >
+          Reflect Horizontally (Left → Right)
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="text-xs"
+          onClick={() => {
+            const reflected = Array.from({ length: 5 }, (_, r) =>
+              Array.from({ length: 5 }, (_, c) => left[4 - r][c])
+            );
+            onRightChange(reflected);
+          }}
+        >
+          Reflect Vertically (Left → Right)
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="text-xs"
+          onClick={() => {
+            onLeftChange(left.map(row => row.map(v => !v)));
+          }}
+        >
+          Invert Left
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="text-xs"
+          onClick={() => {
+            onRightChange(right.map(row => row.map(v => !v)));
+          }}
+        >
+          Invert Right
+        </Button>
       </div>
 
       <div>

@@ -37,13 +37,30 @@ import { SwitchSymbolRow } from '../switch/SwitchSymbolRow';
 import { normalizeSwitchQuestion } from '../../lib/normalizeSwitchQuestion';
 import { generateSwitchPayload } from '../../lib/hackathonGenerators';
 import { GridRoundPreview } from '../grid/GridRoundPreview';
+import {
+  EMPTY_5X5,
+  createDefaultRound,
+  type DotPosition,
+  type SymmetryQuestion,
+  type GridChallengeRound,
+} from '../../types/gridChallenge';
+import { Plus, Trash2, ChevronDown, ChevronUp, Circle, Grid3x3 } from 'lucide-react';
 import { gridPayloadFromHackathon } from '../../lib/normalizeGridQuestion';
 import { motionPayloadFromHackathon } from '../../lib/normalizeMotionQuestion';
 import { MotionLevelPreview } from '../motion/MotionLevelPreview';
 import { generateMotionLevelQuick } from '../../lib/hackathonGenerators';
-import { ReadOnlyShapeGrid } from '../inductive/InductiveGridDisplay';
+import { ReadOnlyShapeGrid, ShapeIcon } from '../inductive/InductiveGridDisplay';
 import { generateInductiveQuestion } from '../../lib/hackathonGenerators';
 import { inductiveQuestionFromPayload } from '../../lib/normalizeInductiveQuestion';
+import {
+  SHAPE_TYPES,
+  SHAPE_COLORS,
+  createEmptyGrid,
+  type ShapeCell,
+  type ShapeGrid,
+  type ShapeType,
+  type ShapeColor,
+} from '../../types/inductiveChallenge';
 
 
 
@@ -768,6 +785,503 @@ const SwitchManualFields: React.FC<{
 
 
 
+const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+
+interface LocalDotCanvasProps {
+  dots: DotPosition[];
+  targetDotId: string;
+  onDotsChange: (dots: DotPosition[]) => void;
+  onTargetChange: (id: string) => void;
+}
+
+const LocalDotCanvas: React.FC<LocalDotCanvasProps> = ({
+  dots,
+  targetDotId,
+  onDotsChange,
+  onTargetChange,
+}) => {
+  const handleAddDot = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = clamp(Math.round(((e.clientX - rect.left) / rect.width) * 100), 2, 98);
+    const y = clamp(Math.round(((e.clientY - rect.top) / rect.height) * 100), 2, 98);
+    const newDot: DotPosition = {
+      id: `dot-${Date.now()}`,
+      x,
+      y,
+      isTarget: false,
+    };
+    onDotsChange([...dots, newDot]);
+  };
+
+  const handleRemoveDot = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    onDotsChange(dots.filter((d) => d.id !== id));
+    if (targetDotId === id) onTargetChange('');
+  };
+
+  const handleSetTarget = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    onTargetChange(id);
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 text-xs text-gray-505">
+        <span>• Click canvas to add dot</span>
+        <span>• Right-click dot to set as target (blinks)</span>
+        <span>• Middle-click to remove</span>
+      </div>
+      <div
+        className="relative w-full bg-gray-100 border-2 border-dashed border-gray-300 rounded-lg cursor-crosshair"
+        style={{ height: 220 }}
+        onClick={handleAddDot}
+      >
+        {dots.map((dot) => {
+          const isTarget = dot.id === targetDotId;
+          return (
+            <div
+              key={dot.id}
+              title={isTarget ? 'Target (blinks)' : 'Right-click → set target'}
+              className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 cursor-pointer transition-all ${
+                isTarget
+                  ? 'bg-green-500 border-green-700 w-5 h-5 shadow-lg shadow-green-300 z-10'
+                  : 'bg-gray-400 border-gray-500 w-4 h-4 hover:bg-gray-500'
+              }`}
+              style={{ left: `${dot.x}%`, top: `${dot.y}%` }}
+              onClick={(e) => e.stopPropagation()}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                handleSetTarget(dot.id, e);
+              }}
+              onAuxClick={(e) => {
+                if (e.button === 1) handleRemoveDot(dot.id, e);
+              }}
+            />
+          );
+        })}
+        {dots.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm pointer-events-none">
+            Click to place dots
+          </div>
+        )}
+      </div>
+      <div className="flex items-center gap-3 text-sm">
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-4 h-4 rounded-full bg-gray-400 border border-gray-500" />
+          Normal dot
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-5 h-5 rounded-full bg-green-500 border border-green-700" />
+          Target dot (blinks)
+        </span>
+        <span className="text-gray-400 ml-auto">{dots.length} dots</span>
+      </div>
+      <div className="flex gap-2 flex-wrap">
+        <Button
+          size="sm"
+          variant="outline"
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            const newDots: DotPosition[] = Array.from({ length: 20 }, (_, i) => ({
+              id: `dot-${Date.now()}-${i}`,
+              x: 5 + Math.round(Math.random() * 88),
+              y: 5 + Math.round(Math.random() * 88),
+              isTarget: false,
+            }));
+            onDotsChange(newDots);
+            onTargetChange(newDots[0].id);
+          }}
+        >
+          Auto-scatter 20 dots
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          type="button"
+          className="text-red-600 hover:text-red-700"
+          onClick={(e) => {
+            e.preventDefault();
+            onDotsChange([]);
+            onTargetChange('');
+          }}
+        >
+          Clear all
+        </Button>
+      </div>
+
+      {dots.length > 0 && (
+        <div className="bg-gray-50 p-2.5 rounded-md border text-xs space-y-2 mt-2">
+          <span className="font-semibold text-gray-700 block">Fine-tune dot coordinates (X / Y in %)</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-40 overflow-y-auto pr-1">
+            {dots.map((dot, idx) => {
+              const isTarget = dot.id === targetDotId;
+              return (
+                <div key={dot.id} className="flex items-center justify-between bg-white p-1.5 rounded border">
+                  <span className="font-medium text-gray-500 w-10">Dot {idx + 1}</span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-gray-400">X</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={dot.x}
+                      onChange={(e) => {
+                        const val = clamp(Number(e.target.value) || 0, 0, 100);
+                        onDotsChange(dots.map(d => d.id === dot.id ? { ...d, x: val } : d));
+                      }}
+                      className="w-9 border rounded px-0.5 py-0.5 text-center focus:ring-1 focus:ring-blue-400"
+                    />
+                    <span className="text-[10px] text-gray-400">Y</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={dot.y}
+                      onChange={(e) => {
+                        const val = clamp(Number(e.target.value) || 0, 0, 100);
+                        onDotsChange(dots.map(d => d.id === dot.id ? { ...d, y: val } : d));
+                      }}
+                      className="w-9 border rounded px-0.5 py-0.5 text-center focus:ring-1 focus:ring-blue-400"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-1 cursor-pointer">
+                      <input
+                        type="radio"
+                        name={`localTargetDot-${targetDotId || 'none'}`}
+                        checked={isTarget}
+                        onChange={() => onTargetChange(dot.id)}
+                        className="cursor-pointer"
+                        title="Set as target"
+                      />
+                      <span className="text-[9px] text-gray-400">Target</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={(e) => handleRemoveDot(dot.id, e)}
+                      className="text-red-500 hover:text-red-700 font-bold px-1 ml-1"
+                      title="Delete dot"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+interface LocalSymmetryEditorProps {
+  left: boolean[][];
+  right: boolean[][];
+  isSymmetric: boolean;
+  label: string;
+  onLeftChange: (grid: boolean[][]) => void;
+  onRightChange: (grid: boolean[][]) => void;
+  onIsSymmetricChange: (v: boolean) => void;
+  onLabelChange: (v: string) => void;
+}
+
+const LocalSymmetryEditor: React.FC<LocalSymmetryEditorProps> = ({
+  left,
+  right,
+  isSymmetric,
+  label,
+  onLeftChange,
+  onRightChange,
+  onIsSymmetricChange,
+  onLabelChange,
+}) => {
+  const toggleCell = (
+    grid: boolean[][],
+    onChange: (g: boolean[][]) => void,
+    r: number,
+    c: number
+  ) => {
+    const clone = grid.map((row) => [...row]);
+    clone[r][c] = !clone[r][c];
+    onChange(clone);
+  };
+
+  const SymmetryGridEditor = ({
+    grid,
+    onChange,
+    label: gridLabel,
+  }: {
+    grid: boolean[][];
+    onChange: (g: boolean[][]) => void;
+    label: string;
+  }) => (
+    <div className="flex flex-col items-center gap-2">
+      <span className="text-xs font-semibold text-gray-500 uppercase">{gridLabel}</span>
+      <div
+        className="grid gap-0.5 bg-gray-200 p-1 rounded"
+        style={{ gridTemplateColumns: `repeat(${grid[0]?.length ?? 5}, 1fr)` }}
+      >
+        {grid.map((row, ri) =>
+          row.map((cell, ci) => (
+            <button
+              key={`${ri}-${ci}`}
+              type="button"
+              onClick={() => toggleCell(grid, onChange, ri, ci)}
+              className={`w-7 h-7 border border-gray-300 transition-colors ${
+                cell ? 'bg-gray-700' : 'bg-white hover:bg-gray-100'
+              }`}
+            />
+          ))
+        )}
+      </div>
+      <div className="flex gap-1">
+        <Button
+          size="sm"
+          variant="ghost"
+          type="button"
+          className="text-xs"
+          onClick={() => onChange(EMPTY_5X5())}
+        >
+          Clear
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          type="button"
+          className="text-xs"
+          onClick={() => {
+            const filled = Array.from({ length: 5 }, () => Array(5).fill(true));
+            onChange(filled);
+          }}
+        >
+          Fill
+        </Button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">Question Label</label>
+        <input
+          type="text"
+          value={label}
+          onChange={(e) => onLabelChange(e.target.value)}
+          placeholder='e.g. "Rotated but identical?"'
+          className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+        />
+      </div>
+
+      <div className="flex gap-6 flex-wrap justify-center py-4 bg-gray-50 rounded-lg border">
+        <SymmetryGridEditor grid={left} onChange={onLeftChange} label="Left Grid" />
+        <div className="flex items-center text-gray-400 font-bold text-xl">vs</div>
+        <SymmetryGridEditor grid={right} onChange={onRightChange} label="Right Grid" />
+      </div>
+
+      <div className="flex flex-wrap gap-1.5 justify-center py-2 bg-gray-55 border-x border-b rounded-b-lg -mt-4 px-4 text-[11px]">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="text-[10px] h-7 px-2"
+          onClick={() => {
+            onRightChange(left.map(row => [...row]));
+          }}
+        >
+          Copy Left → Right
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="text-[10px] h-7 px-2"
+          onClick={() => {
+            const reflected = left.map(row => [...row].reverse());
+            onRightChange(reflected);
+          }}
+        >
+          Reflect Horiz.
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="text-[10px] h-7 px-2"
+          onClick={() => {
+            const reflected = Array.from({ length: 5 }, (_, r) =>
+              Array.from({ length: 5 }, (_, c) => left[4 - r][c])
+            );
+            onRightChange(reflected);
+          }}
+        >
+          Reflect Vert.
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="text-[10px] h-7 px-2"
+          onClick={() => {
+            onLeftChange(left.map(row => row.map(v => !v)));
+          }}
+        >
+          Invert L
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="text-[10px] h-7 px-2"
+          onClick={() => {
+            onRightChange(right.map(row => row.map(v => !v)));
+          }}
+        >
+          Invert R
+        </Button>
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">Correct Answer</label>
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={() => onIsSymmetricChange(true)}
+            className={`px-4 py-1.5 rounded border font-semibold text-xs transition ${
+              isSymmetric
+                ? 'bg-green-600 text-white border-green-700 shadow-sm'
+                : 'bg-white border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            Yes (Symmetric)
+          </button>
+          <button
+            type="button"
+            onClick={() => onIsSymmetricChange(false)}
+            className={`px-4 py-1.5 rounded border font-semibold text-xs transition ${
+              !isSymmetric
+                ? 'bg-red-600 text-white border-red-700 shadow-sm'
+                : 'bg-white border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            No (Not Symmetric)
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+interface LocalRoundEditorProps {
+  round: GridChallengeRound;
+  index: number;
+  onUpdate: (round: GridChallengeRound) => void;
+  onDelete: () => void;
+  canDelete: boolean;
+}
+
+const LocalRoundEditor: React.FC<LocalRoundEditorProps> = ({
+  round,
+  index,
+  onUpdate,
+  onDelete,
+  canDelete,
+}) => {
+  const [expanded, setExpanded] = useState(index === 0);
+
+  const updateDots = (dots: DotPosition[]) =>
+    onUpdate({ ...round, dotPhase: { ...round.dotPhase, dots } });
+
+  const updateTarget = (id: string) =>
+    onUpdate({ ...round, dotPhase: { ...round.dotPhase, targetDotId: id } });
+
+  const updateHighlightMs = (ms: number) =>
+    onUpdate({ ...round, dotPhase: { ...round.dotPhase, highlightDurationMs: ms } });
+
+  const updateSymmetry = (patch: Partial<SymmetryQuestion>) =>
+    onUpdate({ ...round, symmetryPhase: { ...round.symmetryPhase, ...patch } });
+
+  return (
+    <div className="border border-blue-200 rounded-lg overflow-hidden bg-white shadow-sm">
+      <div className="flex items-center justify-between bg-blue-50/50 px-4 py-2 border-b border-blue-100">
+        <span className="font-semibold text-sm text-blue-900">Round {index + 1}</span>
+        <div className="flex items-center gap-2">
+          {canDelete && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-red-500 hover:text-red-600 hover:bg-red-50 p-1 h-7"
+              onClick={onDelete}
+            >
+              <Trash2 size={14} />
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="p-1 h-7 text-gray-500"
+            onClick={() => setExpanded(!expanded)}
+          >
+            {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </Button>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="p-4 space-y-6">
+          <div>
+            <h4 className="text-xs font-semibold text-gray-705 mb-2 flex items-center gap-1">
+              <Circle size={12} /> Dot Phase — place dots, select target
+            </h4>
+            <LocalDotCanvas
+              dots={round.dotPhase.dots}
+              targetDotId={round.dotPhase.targetDotId}
+              onDotsChange={updateDots}
+              onTargetChange={updateTarget}
+            />
+            <div className="mt-3">
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Highlight duration (ms)
+              </label>
+              <input
+                type="number"
+                min={500}
+                max={10000}
+                step={500}
+                value={round.dotPhase.highlightDurationMs}
+                onChange={(e) => updateHighlightMs(Number(e.target.value) || 2000)}
+                className="w-32 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+              />
+            </div>
+          </div>
+
+          <hr className="border-gray-150" />
+
+          <div>
+            <h4 className="text-xs font-semibold text-gray-750 mb-2 flex items-center gap-1">
+              <Grid3x3 size={12} /> Symmetry Phase — draw grids
+            </h4>
+            <LocalSymmetryEditor
+              left={round.symmetryPhase.gridLeft}
+              right={round.symmetryPhase.gridRight}
+              isSymmetric={round.symmetryPhase.isSymmetric}
+              label={round.symmetryPhase.label ?? ''}
+              onLeftChange={(g) => updateSymmetry({ gridLeft: g })}
+              onRightChange={(g) => updateSymmetry({ gridRight: g })}
+              onIsSymmetricChange={(v) => updateSymmetry({ isSymmetric: v })}
+              onLabelChange={(v) => updateSymmetry({ label: v })}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const GridManualFields: React.FC<{
   payload: Extract<HackathonQuestion, { type: 'grid_challenge' }>['payload'];
   onChange: (p: Extract<HackathonQuestion, { type: 'grid_challenge' }>['payload']) => void;
@@ -786,32 +1300,96 @@ const GridManualFields: React.FC<{
     if (fresh.type === 'grid_challenge') onChange(fresh.payload);
   };
 
+  const updateRound = (idx: number, round: GridChallengeRound) => {
+    const updatedRounds = display.rounds.map((r, i) => (i === idx ? round : r));
+    onChange({
+      ...display,
+      rounds: updatedRounds,
+    });
+  };
+
+  const deleteRound = (idx: number) => {
+    if (display.rounds.length > 1) {
+      const updatedRounds = display.rounds.filter((_, i) => i !== idx);
+      onChange({
+        ...display,
+        rounds: updatedRounds,
+        totalRounds: updatedRounds.length,
+      });
+    }
+  };
+
+  const addRound = () => {
+    if (display.rounds.length < 6) {
+      const updatedRounds = [...display.rounds, createDefaultRound(display.rounds.length)];
+      onChange({
+        ...display,
+        rounds: updatedRounds,
+        totalRounds: updatedRounds.length,
+      });
+    }
+  };
+
   return (
-    <div className="space-y-4 rounded-xl border p-4">
+    <div className="space-y-4 rounded-xl border p-4 bg-white shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-medium">Grid rounds preview</p>
+        <p className="text-sm font-semibold text-gray-700">Manually configure Grid Challenge rounds</p>
         <Button type="button" variant="outline" size="sm" onClick={regenAll}>
-          Regenerate all rounds
+          Randomize rounds
         </Button>
       </div>
-      <div>
-        <label className="text-sm font-medium">Number of rounds</label>
-        <Input
-          type="number"
-          min={1}
-          max={10}
-          className="mt-1 w-24"
-          value={display.totalRounds}
-          onChange={(e) => {
-            const n = Math.min(10, Math.max(1, Number(e.target.value) || 1));
-            onChange(gridPayloadFromHackathon({ ...display, totalRounds: n }));
-          }}
-        />
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+
+      <div className="space-y-3">
         {display.rounds.map((r, i) => (
-          <GridRoundPreview key={r.id ?? i} round={r} roundIndex={i} />
+          <LocalRoundEditor
+            key={r.id || `r-${i}`}
+            round={r}
+            index={i}
+            onUpdate={(updated) => updateRound(i, updated)}
+            onDelete={() => deleteRound(i)}
+            canDelete={display.rounds.length > 1}
+          />
         ))}
+      </div>
+
+      {display.rounds.length < 6 && (
+        <Button type="button" variant="outline" className="w-full gap-2 border-dashed" onClick={addRound}>
+          <Plus size={16} /> Add Round
+        </Button>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">
+            Symmetry Display Duration (ms)
+          </label>
+          <input
+            type="number"
+            min={1000}
+            max={30000}
+            step={1000}
+            value={display.symmetryDisplayMs ?? 6000}
+            onChange={(e) => {
+              const ms = Math.max(1000, Number(e.target.value) || 6000);
+              onChange({
+                ...display,
+                symmetryDisplayMs: ms,
+              });
+            }}
+            className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">
+            Total Rounds Count
+          </label>
+          <input
+            type="number"
+            disabled
+            value={display.totalRounds}
+            className="w-full px-3 py-1.5 border border-gray-200 bg-gray-50 rounded text-sm text-gray-500 cursor-not-allowed"
+          />
+        </div>
       </div>
     </div>
   );
@@ -819,10 +1397,122 @@ const GridManualFields: React.FC<{
 
 
 
+const ShapePicker: React.FC<{
+  selected: ShapeCell | null;
+  onSelect: (cell: ShapeCell | null) => void;
+}> = ({ selected, onSelect }) => {
+  const [activeShape, setActiveShape] = useState<ShapeType>(selected?.shape ?? 'square');
+  const [activeColor, setActiveColor] = useState<ShapeColor>(selected?.color ?? 'green');
+
+  const handlePick = (shape: ShapeType, color: ShapeColor) => {
+    setActiveShape(shape);
+    setActiveColor(color);
+    onSelect({ shape, color });
+  };
+
+  return (
+    <div className="space-y-2 p-3 bg-gray-50 rounded-lg border w-full">
+      <p className="text-xs font-semibold text-gray-500 uppercase">Shape Picker (click grid cells to apply active brush)</p>
+      <div className="flex flex-wrap gap-1.5">
+        {SHAPE_TYPES.map((s) =>
+          SHAPE_COLORS.map((c) => {
+            const isSel = selected && selected.shape === s && selected.color === c;
+            return (
+              <button
+                type="button"
+                key={`${s}-${c}`}
+                title={`${c} ${s}`}
+                onClick={() => handlePick(s, c)}
+                className={`w-9 h-9 flex items-center justify-center rounded border-2 transition ${
+                  isSel ? 'border-blue-600 bg-blue-50 scale-110 shadow-sm' : 'border-transparent hover:border-gray-200 bg-white'
+                }`}
+              >
+                <ShapeIcon shape={s} color={c} size={18} />
+              </button>
+            );
+          })
+        )}
+      </div>
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => onSelect(null)}
+          className={`text-xs px-2.5 py-1 rounded border transition ${
+            selected === null
+              ? 'border-red-600 bg-red-50 text-red-600 font-semibold shadow-sm'
+              : 'border-gray-300 text-red-500 hover:bg-gray-50 bg-white'
+          }`}
+        >
+          Clear brush (eraser)
+        </button>
+        {selected && (
+          <div className="flex items-center gap-1.5 text-xs text-gray-600 font-medium">
+            <span>Active:</span>
+            <ShapeIcon shape={selected.shape} color={selected.color} size={14} />
+            <span className="capitalize">{selected.color} {selected.shape}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const InteractiveGridEditor: React.FC<{
+  grid: ShapeGrid;
+  onChange: (grid: ShapeGrid) => void;
+  selectedCell: ShapeCell | null;
+  label: string;
+  size?: number;
+}> = ({ grid, onChange, selectedCell, label, size = 3 }) => {
+  const handleCellClick = (r: number, c: number) => {
+    const clone: ShapeGrid = grid.map((row) => [...row]);
+    clone[r][c] = selectedCell ? { ...selectedCell } : null;
+    onChange(clone);
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-2 bg-white p-3 rounded-lg border border-gray-150 shadow-sm">
+      <span className="text-xs font-semibold text-gray-500 uppercase">{label}</span>
+      <div
+        className="grid gap-1 p-2 bg-gray-50 border border-gray-200 rounded"
+        style={{ gridTemplateColumns: `repeat(${size}, 1fr)` }}
+      >
+        {grid.map((row, ri) =>
+          row.map((cell, ci) => (
+            <button
+              key={`${ri}-${ci}`}
+              type="button"
+              onClick={() => handleCellClick(ri, ci)}
+              className="w-12 h-12 border border-gray-200 flex items-center justify-center bg-white hover:bg-blue-50 rounded transition-all focus:outline-none"
+              title={cell ? `${cell.color} ${cell.shape}` : 'Empty'}
+            >
+              {cell && <ShapeIcon shape={cell.shape} color={cell.color} size={22} />}
+            </button>
+          ))
+        )}
+      </div>
+      <Button
+        size="sm"
+        variant="ghost"
+        type="button"
+        className="text-xs text-red-500 hover:text-red-600 hover:bg-red-50"
+        onClick={() => onChange(createEmptyGrid(size))}
+      >
+        Clear grid
+      </Button>
+    </div>
+  );
+};
+
 const InductiveManualFields: React.FC<{
   payload: Extract<HackathonQuestion, { type: 'inductive_challenge' }>['payload'];
   onChange: (p: Extract<HackathonQuestion, { type: 'inductive_challenge' }>['payload']) => void;
 }> = ({ payload, onChange }) => {
+  const [selectedCell, setSelectedCell] = useState<ShapeCell | null>({
+    shape: 'square',
+    color: 'green',
+  });
+
   React.useEffect(() => {
     if (!payload.questions?.length) {
       onChange({ ...payload, questions: [generateInductiveQuestion(0)] });
@@ -860,29 +1550,69 @@ const InductiveManualFields: React.FC<{
     onChange({ ...payload, questions: [fresh] });
   };
 
+  const updateExampleGridA = (grid: ShapeGrid) => {
+    updateQ0({
+      examplePair: {
+        ...q0.examplePair,
+        gridA: grid,
+      },
+    });
+  };
+
+  const updateExampleGridB = (grid: ShapeGrid) => {
+    updateQ0({
+      examplePair: {
+        ...q0.examplePair,
+        gridB: grid,
+      },
+    });
+  };
+
+  const updateOptionGrid = (optionId: string, grid: ShapeGrid) => {
+    updateQ0({
+      options: q0.options.map((o) => (o.id === optionId ? { ...o, grid } : o)),
+    });
+  };
+
   return (
-    <div className="space-y-4 rounded-xl border p-4">
+    <div className="space-y-4 rounded-xl border p-4 bg-white shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-medium">Example pair (the rule)</p>
+        <p className="text-sm font-semibold text-gray-700">Manually design Inductive grids</p>
         <Button type="button" variant="outline" size="sm" onClick={regenPattern}>
-          New pattern
+          Randomize grids
         </Button>
       </div>
-      <div className="flex gap-6 items-center justify-center p-4 bg-gray-50 rounded-lg border">
-        <ReadOnlyShapeGrid grid={q0.examplePair.gridA} label="Grid A" />
-        <span className="text-xl font-bold text-gray-400">→</span>
-        <ReadOnlyShapeGrid grid={q0.examplePair.gridB} label="Grid B" />
+
+      <ShapePicker selected={selectedCell} onSelect={setSelectedCell} />
+
+      <div className="space-y-2">
+        <p className="text-sm font-medium text-gray-700">Example pair (demonstrates the transformation rule)</p>
+        <div className="flex gap-6 items-center justify-center p-4 bg-gray-50 rounded-lg border">
+          <InteractiveGridEditor
+            grid={q0.examplePair.gridA}
+            onChange={updateExampleGridA}
+            selectedCell={selectedCell}
+            label="Grid A"
+          />
+          <span className="text-xl font-bold text-gray-400">→</span>
+          <InteractiveGridEditor
+            grid={q0.examplePair.gridB}
+            onChange={updateExampleGridB}
+            selectedCell={selectedCell}
+            label="Grid B"
+          />
+        </div>
       </div>
 
       <div>
-        <p className="text-sm font-medium mb-3">Answer options (pick 2 correct)</p>
-        <div className="grid grid-cols-2 gap-3">
+        <p className="text-sm font-medium mb-3 text-gray-700">Answer options (pick exactly 2 correct options that match the rule)</p>
+        <div className="grid grid-cols-2 gap-4">
           {q0.options.map((opt) => (
             <div
               key={opt.id}
-              className={`rounded-lg border-2 p-3 ${
+              className={`rounded-lg border-2 p-3 transition ${
                 q0.correctOptionIds.includes(opt.id)
-                  ? 'border-green-600 bg-green-50'
+                  ? 'border-green-600 bg-green-50/50'
                   : 'border-gray-200'
               }`}
             >
@@ -897,9 +1627,42 @@ const InductiveManualFields: React.FC<{
                   {q0.correctOptionIds.includes(opt.id) ? 'Correct ✓' : 'Mark correct'}
                 </Button>
               </div>
-              <ReadOnlyShapeGrid grid={opt.grid} />
+              <div className="flex justify-center">
+                <InteractiveGridEditor
+                  grid={opt.grid}
+                  onChange={(g) => updateOptionGrid(opt.id, g)}
+                  selectedCell={selectedCell}
+                  label={`Grid ${opt.id}`}
+                />
+              </div>
             </div>
           ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Display duration (seconds)</label>
+          <Input
+            type="number"
+            min={5}
+            max={300}
+            className="mt-1 w-full"
+            value={Math.round((q0.displayDurationMs ?? 30000) / 1000)}
+            onChange={(e) => {
+              const sec = Math.max(5, Number(e.target.value) || 30);
+              updateQ0({ displayDurationMs: sec * 1000 });
+            }}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Pattern/Rule note (admin eyes only)</label>
+          <Textarea
+            className="mt-1 h-9 resize-none"
+            placeholder="e.g. Total shapes in Grid B must equal Grid A"
+            value={q0.rule || ''}
+            onChange={(e) => updateQ0({ rule: e.target.value })}
+          />
         </div>
       </div>
     </div>
