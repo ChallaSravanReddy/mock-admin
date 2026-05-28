@@ -53,13 +53,9 @@ function clampPercent(n: number): number {
 }
 
 function roundHasPlayableData(round: GridChallengeRound): boolean {
-  const hasDots = round.dotPhase.dots.length >= 3;
+  const hasDots = round.dotPhase.dots.length > 0;
   const hasTarget = round.dotPhase.dots.some((d) => d.id === round.dotPhase.targetDotId);
-  const gridFilled = (grid: boolean[][]) =>
-    grid.some((row) => row.some((cell) => cell));
-  const hasSymmetry =
-    gridFilled(round.symmetryPhase.gridLeft) || gridFilled(round.symmetryPhase.gridRight);
-  return hasDots && hasTarget && hasSymmetry;
+  return hasDots && hasTarget;
 }
 
 export function normalizeGridRound(raw: unknown, index: number): GridChallengeRound {

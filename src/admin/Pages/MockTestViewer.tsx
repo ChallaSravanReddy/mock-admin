@@ -516,14 +516,18 @@ const GridChallengeQuestion: React.FC<{
   const gridNorm = normalizeGridQuestion(q);
   const normalizedRounds = gridNorm.rounds;
   const totalRounds = gridNorm.totalRounds;
-  const overallSeconds = totalRounds * 30;
+  const overallSeconds = totalRounds * 120; // 2 minutes per round
 
   const [gameState, setGameState] = useState<'idle' | 'dot' | 'symmetry' | 'recall' | 'done'>('idle');
   const [currentRoundIdx, setCurrentRoundIdx] = useState(0);
   const [userAnswers, setUserAnswers] = useState<any[]>([]);
   const [timedOut, setTimedOut] = useState(false);
+  const gameStateRef = useRef(gameState);
+  gameStateRef.current = gameState;
 
   const handleOverallTimeout = useCallback(() => {
+    // Don't end the game while the dot is being shown — it auto-transitions after 2s
+    if (gameStateRef.current === 'dot') return;
     setTimedOut(true);
     setGameState('done');
     if (onAnswer) {
@@ -541,18 +545,18 @@ const GridChallengeQuestion: React.FC<{
     setTimedOut(false);
   }, [q, answer]);
 
+  // Dot phase: always show highlighted dot for exactly 2 seconds, then go to symmetry
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     if (gameState === 'dot') {
-      const duration = normalizedRounds[currentRoundIdx]?.dotPhase.highlightDurationMs || 2000;
       timer = setTimeout(() => {
         setGameState('symmetry');
-      }, duration);
+      }, 2000);
     }
     return () => {
       if (timer) clearTimeout(timer);
     };
-  }, [gameState, currentRoundIdx, normalizedRounds]);
+  }, [gameState, currentRoundIdx]);
 
   if (normalizedRounds.length === 0) {
     return (
@@ -617,7 +621,7 @@ const GridChallengeQuestion: React.FC<{
             • <strong>{normalizedRounds.length} rounds</strong> — interleaved memory and symmetry check
           </p>
           <p>
-            • Highlighted dot appears for <strong>2 seconds</strong>
+            • Highlighted dot appears for <strong>{((normalizedRounds[0]?.dotPhase.highlightDurationMs ?? 2000) / 1000).toFixed(1).replace(/\.0$/, '')} seconds</strong>
           </p>
           <p>
             • Overall time limit: <strong>{overallSeconds} seconds</strong>
@@ -639,29 +643,28 @@ const GridChallengeQuestion: React.FC<{
           <p className="text-sm text-gray-500">Pay attention to the blinking yellow dot</p>
         </div>
         <div className="relative w-80 h-80 bg-slate-900 rounded-2xl border-4 border-slate-800 shadow-xl overflow-hidden flex items-center justify-center">
+          {/* Ping animation layer for target dot only */}
+          {currentRound.dotPhase.dots.map((dot: any) => {
+            const isTarget = dot.id === currentRound.dotPhase.targetDotId;
+            if (!isTarget) return null;
+            return (
+              <div
+                key={`ping-${dot.id}`}
+                className="absolute w-5 h-5 rounded-full bg-yellow-400/50 animate-ping transform -translate-x-1/2 -translate-y-1/2"
+                style={{ left: `${dot.x}%`, top: `${dot.y}%` }}
+              />
+            );
+          })}
+          {/* All dots — target is yellow, others are blue */}
           {currentRound.dotPhase.dots.map((dot: any) => {
             const isTarget = dot.id === currentRound.dotPhase.targetDotId;
             return (
               <div
                 key={dot.id}
-                className={`absolute w-4 h-4 rounded-full transition-all transform -translate-x-1/2 -translate-y-1/2 ${
+                className={`absolute rounded-full transform -translate-x-1/2 -translate-y-1/2 transition-all ${
                   isTarget
-                    ? 'bg-yellow-400 ring-8 ring-yellow-400/30 scale-125 animate-ping'
-                    : 'bg-blue-500/85'
-                }`}
-                style={{ left: `${dot.x}%`, top: `${dot.y}%` }}
-              />
-            );
-          })}
-          {currentRound.dotPhase.dots.map((dot: any) => {
-            const isTarget = dot.id === currentRound.dotPhase.targetDotId;
-            return (
-              <div
-                key={`actual-${dot.id}`}
-                className={`absolute w-4 h-4 rounded-full transition-all transform -translate-x-1/2 -translate-y-1/2 ${
-                  isTarget
-                    ? 'bg-yellow-400 ring-4 ring-yellow-400/50 scale-125 shadow-lg shadow-yellow-400'
-                    : 'bg-blue-500'
+                    ? 'w-5 h-5 bg-yellow-400 shadow-lg shadow-yellow-400/70 ring-2 ring-yellow-300 scale-110'
+                    : 'w-4 h-4 bg-blue-400'
                 }`}
                 style={{ left: `${dot.x}%`, top: `${dot.y}%` }}
               />

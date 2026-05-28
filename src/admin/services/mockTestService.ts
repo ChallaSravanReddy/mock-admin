@@ -890,13 +890,28 @@ export const mockTestService = {
     question: HackathonQuestion
   ): Promise<{ ok: boolean; message?: string; saved?: HackathonQuestion }> => {
     const now = new Date().toISOString();
+    const isUuid = (str: string) =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+    const generateUuid = () => {
+      if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+      }
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      });
+    };
+
+    const targetId = isUuid(question.id) ? question.id : generateUuid();
+    const qWithId = { ...question, id: targetId };
 
     return trySupabase(
       async () => {
         const baseMeta = {
-          title: question.title,
-          description: question.description,
-          difficulty: question.difficulty,
+          title: qWithId.title,
+          description: qWithId.description,
+          difficulty: qWithId.difficulty,
           published: true,
         };
 
@@ -913,13 +928,13 @@ export const mockTestService = {
           await mockTestService.linkQuestionToTest(mockTestId, gameType, refId, 1);
         };
 
-        if (question.type === 'puzzle') {
-          const p = question.payload;
+        if (qWithId.type === 'puzzle') {
+          const p = qWithId.payload;
           const { data: row, error } = await supabase
             .from('puzzle_questions')
             .upsert(
               {
-                id: question.id,
+                id: qWithId.id,
                 ...baseMeta,
                 grid_size: p.gridSize,
                 grid: p.grid,
@@ -936,21 +951,21 @@ export const mockTestService = {
           return {
             ok: true,
             saved: {
-              ...question,
+              ...qWithId,
               id: row.id,
-              createdAt: question.createdAt || row.created_at || now,
+              createdAt: qWithId.createdAt || row.created_at || now,
               updatedAt: row.updated_at || now,
             },
           };
         }
 
-        if (question.type === 'switch_challenge') {
-          const p = question.payload;
+        if (qWithId.type === 'switch_challenge') {
+          const p = qWithId.payload;
           const { data: row, error } = await supabase
             .from('switch_challenge_games')
             .upsert(
               {
-                id: question.id,
+                id: qWithId.id,
                 ...baseMeta,
                 time_duration_sec: p.timeDuration,
                 input_symbols: p.inputSymbols,
@@ -967,16 +982,16 @@ export const mockTestService = {
             .single();
           if (error) throw error;
           await ensureLinked('switch_challenge', row.id);
-          return { ok: true, saved: { ...question, id: row.id, updatedAt: row.updated_at || now } };
+          return { ok: true, saved: { ...qWithId, id: row.id, updatedAt: row.updated_at || now } };
         }
 
-        if (question.type === 'grid_challenge') {
-          const p = question.payload;
+        if (qWithId.type === 'grid_challenge') {
+          const p = qWithId.payload;
           const { data: row, error } = await supabase
             .from('grid_challenge_games')
             .upsert(
               {
-                id: question.id,
+                id: qWithId.id,
                 ...baseMeta,
                 total_rounds: p.totalRounds ?? p.rounds?.length ?? 1,
                 symmetry_display_ms: p.symmetryDisplayMs ?? 6000,
@@ -1007,18 +1022,18 @@ export const mockTestService = {
           }
 
           await ensureLinked('grid_challenge', row.id);
-          return { ok: true, saved: { ...question, id: row.id, updatedAt: row.updated_at || now } };
+          return { ok: true, saved: { ...qWithId, id: row.id, updatedAt: row.updated_at || now } };
         }
 
-        if (question.type === 'inductive_challenge') {
-          const p = question.payload as any;
+        if (qWithId.type === 'inductive_challenge') {
+          const p = qWithId.payload as any;
           const displayDurationMs = p.questions?.[0]?.displayDurationMs ?? 30000;
 
           const { data: row, error } = await supabase
             .from('inductive_challenge_games')
             .upsert(
               {
-                id: question.id,
+                id: qWithId.id,
                 ...baseMeta,
                 display_duration_ms: displayDurationMs,
                 scoring_correct: p.scoringRules?.correctPoints ?? 3,
@@ -1053,16 +1068,16 @@ export const mockTestService = {
           }
 
           await ensureLinked('inductive_challenge', row.id);
-          return { ok: true, saved: { ...question, id: row.id, updatedAt: row.updated_at || now } };
+          return { ok: true, saved: { ...qWithId, id: row.id, updatedAt: row.updated_at || now } };
         }
 
-        if (question.type === 'motion_challenge') {
-          const p = question.payload as any;
+        if (qWithId.type === 'motion_challenge') {
+          const p = qWithId.payload as any;
           const { data: row, error } = await supabase
             .from('motion_challenge_games')
             .upsert(
               {
-                id: question.id,
+                id: qWithId.id,
                 ...baseMeta,
                 time_duration_sec: p.timeDurationSeconds ?? 240,
                 scoring_correct: p.scoringRules?.correctPoints ?? 4,
@@ -1090,7 +1105,7 @@ export const mockTestService = {
           }
 
           await ensureLinked('motion_challenge', row.id);
-          return { ok: true, saved: { ...question, id: row.id, updatedAt: row.updated_at || now } };
+          return { ok: true, saved: { ...qWithId, id: row.id, updatedAt: row.updated_at || now } };
         }
 
         return { ok: false, message: 'Unsupported question type' };
