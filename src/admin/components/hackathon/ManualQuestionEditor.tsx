@@ -135,7 +135,7 @@ export const ManualQuestionEditor: React.FC<ManualQuestionEditorProps> = ({
 
             <p className="text-xs text-muted-foreground">
 
-              {question.source === 'ai' ? 'AI-generated' : 'Hand-crafted'} · edit answers below
+              {question.source === 'ai' ? 'Auto-generated' : 'Hand-crafted'} · edit answers below
 
             </p>
 
@@ -144,8 +144,7 @@ export const ManualQuestionEditor: React.FC<ManualQuestionEditorProps> = ({
         </div>
 
         <Button type="button" variant="outline" size="sm" className="gap-1" onClick={regenWithAi}>
-
-          <Wand2 className="size-4" /> Re-generate with AI
+          <Wand2 className="size-4" /> Auto-generate again
 
         </Button>
 

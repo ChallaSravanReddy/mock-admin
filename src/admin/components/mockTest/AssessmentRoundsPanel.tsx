@@ -1,29 +1,32 @@
-import React, { useMemo, useState } from 'react';
-import { Plus } from 'lucide-react';
+import React, { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import type { GameTypeId } from '../../constants/gameTypes';
 import { getGameTypeConfig } from '../../constants/gameTypes';
 import { useMockTestQuestionsStore } from '../../store/mockTestQuestionsStore';
 import { groupQuestionsIntoRounds } from '../../lib/assessmentQuestionUtils';
 import { AssessmentQuestionCard } from './AssessmentQuestionCard';
-import { AddQuestionModal } from '../hackathon/AddQuestionModal';
 import type { HackathonQuestion } from '../../types/hackathon';
+import { mockTestService } from '../../services';
+
+const EMPTY_QUESTIONS: HackathonQuestion[] = [];
 
 interface AssessmentRoundsPanelProps {
   testId: string;
   enabledTypes: GameTypeId[];
   onQuestionsChange?: (count: number) => void;
+  onAddQuestions?: () => void;
+  onEditQuestion?: (q: HackathonQuestion) => void;
 }
 
 export const AssessmentRoundsPanel: React.FC<AssessmentRoundsPanelProps> = ({
   testId,
   enabledTypes,
   onQuestionsChange,
+  onAddQuestions,
+  onEditQuestion,
 }) => {
-  const questions = useMockTestQuestionsStore((s) => s.byTestId[testId] ?? []);
+  const questions = useMockTestQuestionsStore((s) => s.byTestId[testId] ?? EMPTY_QUESTIONS);
   const deleteQuestion = useMockTestQuestionsStore((s) => s.deleteQuestion);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<HackathonQuestion | null>(null);
 
   const rounds = useMemo(
     () => groupQuestionsIntoRounds(questions, enabledTypes),
@@ -34,18 +37,9 @@ export const AssessmentRoundsPanel: React.FC<AssessmentRoundsPanelProps> = ({
     onQuestionsChange?.(questions.length);
   }, [questions.length, onQuestionsChange]);
 
-  const openAdd = () => {
-    setEditing(null);
-    setModalOpen(true);
-  };
-
-  const openEdit = (q: HackathonQuestion) => {
-    setEditing(q);
-    setModalOpen(true);
-  };
-
-  const handleDelete = (q: HackathonQuestion) => {
+  const handleDelete = async (q: HackathonQuestion) => {
     if (confirm('Remove this question from the assessment?')) {
+      await mockTestService.deleteHackathonQuestionFromSupabase(testId, q);
       deleteQuestion(testId, q.id);
     }
   };
@@ -58,9 +52,8 @@ export const AssessmentRoundsPanel: React.FC<AssessmentRoundsPanelProps> = ({
           type="button"
           className="bg-red-600 hover:bg-red-700 text-white gap-1.5"
           disabled={enabledTypes.length === 0}
-          onClick={openAdd}
+          onClick={onAddQuestions}
         >
-          <Plus className="size-4" />
           Add Questions
         </Button>
       </div>
@@ -105,7 +98,7 @@ export const AssessmentRoundsPanel: React.FC<AssessmentRoundsPanelProps> = ({
                     key={q.id}
                     question={q}
                     index={i}
-                    onEdit={() => openEdit(q)}
+                    onEdit={() => onEditQuestion?.(q)}
                     onDelete={() => handleDelete(q)}
                   />
                 ))}
@@ -114,18 +107,6 @@ export const AssessmentRoundsPanel: React.FC<AssessmentRoundsPanelProps> = ({
           </section>
         );
       })}
-
-      <AddQuestionModal
-        open={modalOpen}
-        onOpenChange={(open) => {
-          setModalOpen(open);
-          if (!open) setEditing(null);
-        }}
-        editQuestion={editing}
-        mockTestId={testId}
-        allowedTypes={enabledTypes}
-        context="mock-test"
-      />
     </div>
   );
 };

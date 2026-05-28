@@ -86,6 +86,22 @@ export const useHackathonStore = create<HackathonStore>()(
 
       clearAll: () => set({ questions: [] }),
     }),
-    { name: STORAGE_KEY }
+    {
+      name: STORAGE_KEY,
+      storage: {
+        getItem: (name) => {
+          const raw = localStorage.getItem(name);
+          if (!raw) return null;
+          try {
+            return JSON.parse(raw);
+          } catch {
+            localStorage.removeItem(name);
+            return null;
+          }
+        },
+        setItem: (name, value) => localStorage.setItem(name, JSON.stringify(value)),
+        removeItem: (name) => localStorage.removeItem(name),
+      },
+    }
   )
 );

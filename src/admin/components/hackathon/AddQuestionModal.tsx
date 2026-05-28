@@ -41,6 +41,8 @@ import { useHackathonStore } from '../../store/hackathonStore';
 import { useMockTestQuestionsStore } from '../../store/mockTestQuestionsStore';
 
 import { createManualTemplate } from '../../lib/hackathonGenerators';
+import { generateHackathonQuestion } from '../../lib/hackathonGenerators';
+import { mockTestService } from '../../services';
 
 import { ManualQuestionEditor } from './ManualQuestionEditor';
 
@@ -133,7 +135,6 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
   const generateBatch = (type: GameTypeId, count: number) =>
 
     isMockTest
-
       ? mockTestQs.addGenerated(mockTestId!, type, count)
 
       : hackathon.generateBatch(type, count);
@@ -335,15 +336,36 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
     await new Promise((r) => setTimeout(r, 50));
 
     // Motion BFS generation can freeze the UI — yield to the browser between items
-    let result: { ok: boolean; message?: string; added?: number } = { ok: true };
-    if (selectedType === 'motion_challenge' && aiCount > 0) {
+    let result: { ok: boolean; message?: string; added?: number } = { ok: true, added: 0 };
+    if (isMockTest) {
+      // Persist each generated item to Supabase (if configured) + local store
       for (let i = 0; i < aiCount; i++) {
-        result = generateBatch(selectedType, 1);
-        if (!result.ok) break;
+        const draftQ = generateHackathonQuestion(selectedType, 'ai') as HackathonQuestion;
+        const saved = await mockTestService.upsertHackathonQuestionToSupabase(mockTestId!, draftQ);
+        if (saved.ok && saved.saved) {
+          addQuestion(saved.saved);
+          result.added = (result.added ?? 0) + 1;
+        } else {
+          // Fallback: at least keep it locally
+          const localRes = addQuestion(draftQ);
+          if (!localRes.ok) {
+            result = { ok: false, message: localRes.message ?? saved.message ?? 'Generation failed' };
+            break;
+          }
+          result.added = (result.added ?? 0) + 1;
+        }
         await new Promise((r) => setTimeout(r, 0));
       }
     } else {
-      result = generateBatch(selectedType, aiCount);
+      if (selectedType === 'motion_challenge' && aiCount > 0) {
+        for (let i = 0; i < aiCount; i++) {
+          result = generateBatch(selectedType, 1);
+          if (!result.ok) break;
+          await new Promise((r) => setTimeout(r, 0));
+        }
+      } else {
+        result = generateBatch(selectedType, aiCount);
+      }
     }
 
     setIsGenerating(false);
@@ -362,16 +384,31 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
 
 
 
-  const handleManualSave = (q: HackathonQuestion) => {
+  const handleManualSave = async (q: HackathonQuestion) => {
 
     if (isEdit && editQuestion) {
-
+      if (isMockTest) {
+        const saved = await mockTestService.upsertHackathonQuestionToSupabase(mockTestId!, q);
+        updateQuestion(editQuestion.id, saved.ok && saved.saved ? saved.saved : q);
+        close();
+        return;
+      }
       updateQuestion(editQuestion.id, q);
-
       close();
-
       return;
 
+    }
+
+    if (isMockTest) {
+      const saved = await mockTestService.upsertHackathonQuestionToSupabase(mockTestId!, q);
+      const toAdd = saved.ok && saved.saved ? saved.saved : q;
+      const result = addQuestion(toAdd);
+      if (!result.ok) {
+        setError(result.message ?? saved.message ?? 'Could not save');
+        return;
+      }
+      close();
+      return;
     }
 
     const result = addQuestion(q);
@@ -428,7 +465,7 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
 
               {step === 'mode' && cfg && `${cfg.label} · generate or edit manually`}
 
-              {step === 'ai-count' && `Generate up to ${remaining} more with AI`}
+              {step === 'ai-count' && `Auto-generate up to ${remaining} more`}
 
               {step === 'manual-edit' && 'Edit question, grid, and answers below'}
 
@@ -558,7 +595,7 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
 
                 <div>
 
-                  <p className="font-semibold text-gray-900">Generate with AI</p>
+                  <p className="font-semibold text-gray-900">Auto-generate</p>
 
                   <p className="text-sm text-muted-foreground mt-1">
 
@@ -688,7 +725,7 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
 
                     <Sparkles className="size-4" />
 
-                    Generate {aiCount} question{aiCount !== 1 ? 's' : ''}
+                    Auto-generate {aiCount} question{aiCount !== 1 ? 's' : ''}
 
                   </>
 

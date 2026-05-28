@@ -1,15 +1,7 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard,
   Lightbulb,
-  BarChart3,
-  Settings,
-  Zap,
-  Grid3x3,
-  Shapes,
-  Move,
-  Trophy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -27,54 +19,9 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   {
-    label: 'Dashboard',
-    icon: <LayoutDashboard size={20} />,
-    path: '/admin',
-  },
-  {
     label: 'Mock Tests',
     icon: <Lightbulb size={20} />,
     path: '/admin/mock-tests',
-  },
-  {
-    label: 'Hackathon Studio',
-    icon: <Trophy size={20} />,
-    path: '/admin/hackathon',
-  },
-  {
-    label: 'Puzzle Builder',
-    icon: <BarChart3 size={20} />,
-    path: '/admin/puzzle-builder',
-  },
-  {
-    label: 'Swith Challenge',
-    icon: <Zap size={20} />,
-    path: '/admin/swith-challenge',
-  },
-  {
-    label: 'Grid Challenge',
-    icon: <Grid3x3 size={20} />,
-    path: '/admin/grid-challenge',
-  },
-  {
-    label: 'Inductive Challenge',
-    icon: <Shapes size={20} />,
-    path: '/admin/inductive-challenge',
-  },
-  {
-    label: 'Motion Challenge',
-    icon: <Move size={20} />,
-    path: '/admin/motion-challenge',
-  },
-  {
-    label: 'Results',
-    icon: <BarChart3 size={20} />,
-    path: '/admin/results',
-  },
-  {
-    label: 'Settings',
-    icon: <Settings size={20} />,
-    path: '/admin/settings',
   },
 ];
 

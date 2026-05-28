@@ -1,5 +1,6 @@
 import { MockTest } from '../types';
 import { supabase } from '../../lib/supabase';
+import type { HackathonQuestion } from '../types/hackathon';
 
 const LOCAL_STORAGE_KEY = 'mock_admin_mock_tests';
 
@@ -654,6 +655,480 @@ export const mockTestService = {
 
         return localQuestions;
       }
+    );
+  },
+
+  /**
+   * Fetch questions for admin editing (HackathonQuestion shape).
+   * If this browser already has local stored questions for the test, those win.
+   * Otherwise, attempt to read legacy/Supabase-linked questions and convert them
+   * into HackathonQuestion objects so the assessment detail UI can render/edit them.
+   */
+  getHackathonQuestionsForTest: async (mockTestId: string): Promise<HackathonQuestion[]> => {
+    const { useMockTestQuestionsStore } = await import('../store/mockTestQuestionsStore');
+    const stored = useMockTestQuestionsStore.getState().getQuestions(mockTestId);
+    if (stored.length > 0) return stored;
+
+    return trySupabase<HackathonQuestion[]>(
+      async (): Promise<HackathonQuestion[]> => {
+        const { data: links, error: linksError } = await supabase
+          .from('mock_test_questions')
+          .select('*')
+          .eq('mock_test_id', mockTestId)
+          .order('sequence_order', { ascending: true });
+
+        if (linksError) throw linksError;
+        if (!links || links.length === 0) return [];
+
+        const now = new Date().toISOString();
+        const result: HackathonQuestion[] = [];
+
+        for (const link of links) {
+          const refId = link.question_ref_id;
+          if (link.game_type === 'puzzle') {
+            const { data: q, error } = await supabase
+              .from('puzzle_questions')
+              .select('*')
+              .eq('id', refId)
+              .single();
+            if (!error && q) {
+              result.push({
+                id: q.id,
+                type: 'puzzle',
+                title: q.title || 'Puzzle Question',
+                description: q.prompt || q.description || 'What symbol completes the grid?',
+                difficulty: q.difficulty || 'medium',
+                source: 'manual',
+                createdAt: q.created_at || now,
+                updatedAt: q.updated_at || now,
+                payload: {
+                  gridSize: Array.isArray(q.grid) ? (q.grid[0]?.length ?? 3) : 3,
+                  grid: q.grid,
+                  missingCell: q.missing_cell,
+                  options: q.options,
+                  correctAnswer: q.correct_answer,
+                  difficulty: q.difficulty || 'medium',
+                },
+              } as HackathonQuestion);
+            }
+          } else if (link.game_type === 'switch_challenge') {
+            const { data: q, error } = await supabase
+              .from('switch_challenge_games')
+              .select('*')
+              .eq('id', refId)
+              .single();
+            if (!error && q) {
+              const { normalizeSwitchQuestion } = await import('../lib/normalizeSwitchQuestion');
+              const sw = normalizeSwitchQuestion({
+                input_symbols: q.input_symbols,
+                output_symbols: q.output_symbols,
+                options: q.options,
+                correct_option: q.correct_option,
+                time_duration_sec: q.time_duration_sec,
+              });
+              result.push({
+                id: q.id,
+                type: 'switch_challenge',
+                title: q.title || 'Switch Challenge',
+                description: q.description || 'Match the correct sequence mapping from top to bottom.',
+                difficulty: q.difficulty || 'medium',
+                source: 'manual',
+                createdAt: q.created_at || now,
+                updatedAt: q.updated_at || now,
+                payload: {
+                  title: q.title || 'Switch Challenge',
+                  description: q.description || 'Match the correct sequence mapping from top to bottom.',
+                  difficulty: q.difficulty || 'medium',
+                  timeDuration: sw.timeDuration,
+                  inputSymbols: sw.inputSymbols,
+                  outputSymbols: sw.outputSymbols,
+                  correctAnswerCode: sw.correct,
+                  options: sw.options,
+                  correctOption: sw.correct,
+                  scoringRules: { correctPoints: 3, wrongPoints: -1 },
+                },
+              } as HackathonQuestion);
+            }
+          } else if (link.game_type === 'grid_challenge') {
+            const { data: q, error } = await supabase
+              .from('grid_challenge_games')
+              .select('*')
+              .eq('id', refId)
+              .single();
+            if (!error && q) {
+              const { data: rounds } = await supabase
+                .from('grid_challenge_rounds')
+                .select('*')
+                .eq('game_id', q.id)
+                .order('round_order', { ascending: true });
+
+              const { normalizeGridQuestion } = await import('../lib/normalizeGridQuestion');
+              const grid = normalizeGridQuestion({
+                roundsData: rounds || [],
+                totalRounds: q.total_rounds,
+                description: q.description,
+                symmetryDisplayMs: q.symmetry_display_ms,
+              });
+
+              result.push({
+                id: q.id,
+                type: 'grid_challenge',
+                title: q.title || 'Grid Challenge',
+                description: grid.description || q.description || 'Grid rounds',
+                difficulty: q.difficulty || 'medium',
+                source: 'manual',
+                createdAt: q.created_at || now,
+                updatedAt: q.updated_at || now,
+                payload: {
+                  title: q.title || 'Grid Challenge',
+                  description: grid.description || q.description || 'Grid rounds',
+                  difficulty: q.difficulty || 'medium',
+                  totalRounds: grid.totalRounds,
+                  rounds: grid.rounds,
+                  scoringRules: { correctPoints: 3, wrongPoints: -1 },
+                  symmetryDisplayMs: grid.symmetryDisplayMs,
+                },
+              } as HackathonQuestion);
+            }
+          } else if (link.game_type === 'inductive_challenge') {
+            const { data: q, error } = await supabase
+              .from('inductive_challenge_games')
+              .select('*')
+              .eq('id', refId)
+              .single();
+            if (!error && q) {
+              const { data: qList } = await supabase
+                .from('inductive_challenge_questions')
+                .select('*')
+                .eq('game_id', q.id)
+                .order('question_order', { ascending: true });
+
+              const { normalizeInductiveQuestions } = await import('../lib/normalizeInductiveQuestion');
+              const normalized = normalizeInductiveQuestions({ questionsData: qList || [] });
+              const questions = normalized.map((n: any) => ({
+                id: n.id,
+                examplePair: n.examplePair,
+                options: n.options,
+                correctOptionIds: n.correctOptionIds,
+                rule: n.rule,
+                displayDurationMs: n.displayDurationMs,
+              }));
+
+              result.push({
+                id: q.id,
+                type: 'inductive_challenge',
+                title: q.title || 'Inductive Challenge',
+                description: q.description || 'Find the rule and choose matching option grids',
+                difficulty: q.difficulty || 'medium',
+                source: 'manual',
+                createdAt: q.created_at || now,
+                updatedAt: q.updated_at || now,
+                payload: {
+                  title: q.title || 'Inductive Challenge',
+                  description: q.description || 'Find the rule and choose matching option grids',
+                  difficulty: q.difficulty || 'medium',
+                  questions,
+                  scoringRules: { correctPoints: 3, wrongPoints: -1 },
+                },
+              } as HackathonQuestion);
+            }
+          } else if (link.game_type === 'motion_challenge') {
+            const { data: q, error } = await supabase
+              .from('motion_challenge_games')
+              .select('*')
+              .eq('id', refId)
+              .single();
+            if (!error && q) {
+              const { data: levels } = await supabase
+                .from('motion_challenge_levels')
+                .select('*')
+                .eq('game_id', q.id)
+                .order('level_order', { ascending: true });
+
+              const { normalizeMotionQuestion } = await import('../lib/normalizeMotionQuestion');
+              const motion = normalizeMotionQuestion({
+                levelsData: levels || [],
+                description: q.description,
+                time_duration_seconds: q.time_duration_seconds,
+              });
+
+              result.push({
+                id: q.id,
+                type: 'motion_challenge',
+                title: q.title || 'Motion Challenge',
+                description: motion.description || q.description || 'Solve the motion levels',
+                difficulty: q.difficulty || 'medium',
+                source: 'manual',
+                createdAt: q.created_at || now,
+                updatedAt: q.updated_at || now,
+                payload: {
+                  title: q.title || 'Motion Challenge',
+                  description: motion.description || q.description || 'Solve the motion levels',
+                  difficulty: q.difficulty || 'medium',
+                  levels: motion.levels,
+                  timeDurationSeconds: motion.timeDurationSeconds,
+                  scoringRules: { correctPoints: 4, wrongPoints: -1 },
+                },
+              } as HackathonQuestion);
+            }
+          }
+        }
+
+        return result;
+      },
+      async (): Promise<HackathonQuestion[]> => {
+        return [];
+      }
+    );
+  },
+
+  upsertHackathonQuestionToSupabase: async (
+    mockTestId: string,
+    question: HackathonQuestion
+  ): Promise<{ ok: boolean; message?: string; saved?: HackathonQuestion }> => {
+    const now = new Date().toISOString();
+
+    return trySupabase(
+      async () => {
+        const baseMeta = {
+          title: question.title,
+          description: question.description,
+          difficulty: question.difficulty,
+          published: true,
+        };
+
+        const ensureLinked = async (gameType: HackathonQuestion['type'], refId: string) => {
+          const { data: existing, error } = await supabase
+            .from('mock_test_questions')
+            .select('id')
+            .eq('mock_test_id', mockTestId)
+            .eq('game_type', gameType)
+            .eq('question_ref_id', refId)
+            .maybeSingle();
+
+          if (!error && existing?.id) return;
+          await mockTestService.linkQuestionToTest(mockTestId, gameType, refId, 1);
+        };
+
+        if (question.type === 'puzzle') {
+          const p = question.payload;
+          const { data: row, error } = await supabase
+            .from('puzzle_questions')
+            .upsert(
+              {
+                id: question.id,
+                ...baseMeta,
+                grid_size: p.gridSize,
+                grid: p.grid,
+                missing_cell: p.missingCell,
+                options: (p.options ?? []).filter(Boolean),
+                correct_answer: p.correctAnswer ?? '',
+              },
+              { onConflict: 'id' }
+            )
+            .select()
+            .single();
+          if (error) throw error;
+          await ensureLinked('puzzle', row.id);
+          return {
+            ok: true,
+            saved: {
+              ...question,
+              id: row.id,
+              createdAt: question.createdAt || row.created_at || now,
+              updatedAt: row.updated_at || now,
+            },
+          };
+        }
+
+        if (question.type === 'switch_challenge') {
+          const p = question.payload;
+          const { data: row, error } = await supabase
+            .from('switch_challenge_games')
+            .upsert(
+              {
+                id: question.id,
+                ...baseMeta,
+                time_duration_sec: p.timeDuration,
+                input_symbols: p.inputSymbols,
+                output_symbols: p.outputSymbols,
+                correct_answer_code: p.correctAnswerCode ?? p.correctOption ?? '',
+                options: p.options,
+                correct_option: p.correctOption,
+                scoring_correct: p.scoringRules?.correctPoints ?? 3,
+                scoring_wrong: p.scoringRules?.wrongPoints ?? -1,
+              },
+              { onConflict: 'id' }
+            )
+            .select()
+            .single();
+          if (error) throw error;
+          await ensureLinked('switch_challenge', row.id);
+          return { ok: true, saved: { ...question, id: row.id, updatedAt: row.updated_at || now } };
+        }
+
+        if (question.type === 'grid_challenge') {
+          const p = question.payload;
+          const { data: row, error } = await supabase
+            .from('grid_challenge_games')
+            .upsert(
+              {
+                id: question.id,
+                ...baseMeta,
+                total_rounds: p.totalRounds ?? p.rounds?.length ?? 1,
+                symmetry_display_ms: p.symmetryDisplayMs ?? 6000,
+                scoring_correct: p.scoringRules?.correctPoints ?? 3,
+                scoring_wrong: p.scoringRules?.wrongPoints ?? -1,
+              },
+              { onConflict: 'id' }
+            )
+            .select()
+            .single();
+          if (error) throw error;
+
+          // Replace rounds
+          await supabase.from('grid_challenge_rounds').delete().eq('game_id', row.id);
+          for (let i = 0; i < (p.rounds ?? []).length; i++) {
+            const r = p.rounds[i] as any;
+            await supabase.from('grid_challenge_rounds').insert({
+              game_id: row.id,
+              round_order: i,
+              dots: r.dotPhase?.dots ?? [],
+              target_dot_id: r.dotPhase?.targetDotId ?? '',
+              highlight_duration_ms: r.dotPhase?.highlightDurationMs ?? 2000,
+              grid_left: r.symmetryPhase?.gridLeft ?? [],
+              grid_right: r.symmetryPhase?.gridRight ?? [],
+              is_symmetric: r.symmetryPhase?.isSymmetric ?? false,
+              symmetry_label: r.symmetryPhase?.label ?? '',
+            });
+          }
+
+          await ensureLinked('grid_challenge', row.id);
+          return { ok: true, saved: { ...question, id: row.id, updatedAt: row.updated_at || now } };
+        }
+
+        if (question.type === 'inductive_challenge') {
+          const p = question.payload as any;
+          const displayDurationMs = p.questions?.[0]?.displayDurationMs ?? 30000;
+
+          const { data: row, error } = await supabase
+            .from('inductive_challenge_games')
+            .upsert(
+              {
+                id: question.id,
+                ...baseMeta,
+                display_duration_ms: displayDurationMs,
+                scoring_correct: p.scoringRules?.correctPoints ?? 3,
+                scoring_wrong: p.scoringRules?.wrongPoints ?? -1,
+              },
+              { onConflict: 'id' }
+            )
+            .select()
+            .single();
+          if (error) throw error;
+
+          await supabase.from('inductive_challenge_questions').delete().eq('game_id', row.id);
+          const list = Array.isArray(p.questions) ? p.questions : [];
+          for (let i = 0; i < list.length; i++) {
+            const iq = list[i];
+            const optionA = iq.options?.find((o: any) => o.id === 'A')?.grid ?? [];
+            const optionB = iq.options?.find((o: any) => o.id === 'B')?.grid ?? [];
+            const optionC = iq.options?.find((o: any) => o.id === 'C')?.grid ?? [];
+            const optionD = iq.options?.find((o: any) => o.id === 'D')?.grid ?? [];
+            await supabase.from('inductive_challenge_questions').insert({
+              game_id: row.id,
+              question_order: i,
+              grid_a: iq.examplePair?.gridA ?? [],
+              grid_b: iq.examplePair?.gridB ?? [],
+              option_a: optionA,
+              option_b: optionB,
+              option_c: optionC,
+              option_d: optionD,
+              correct_option_ids: iq.correctOptionIds ?? [],
+              rule_note: iq.rule ?? '',
+            });
+          }
+
+          await ensureLinked('inductive_challenge', row.id);
+          return { ok: true, saved: { ...question, id: row.id, updatedAt: row.updated_at || now } };
+        }
+
+        if (question.type === 'motion_challenge') {
+          const p = question.payload as any;
+          const { data: row, error } = await supabase
+            .from('motion_challenge_games')
+            .upsert(
+              {
+                id: question.id,
+                ...baseMeta,
+                time_duration_sec: p.timeDurationSeconds ?? 240,
+                scoring_correct: p.scoringRules?.correctPoints ?? 4,
+                scoring_wrong: p.scoringRules?.wrongPoints ?? -1,
+              },
+              { onConflict: 'id' }
+            )
+            .select()
+            .single();
+          if (error) throw error;
+
+          await supabase.from('motion_challenge_levels').delete().eq('game_id', row.id);
+          const levels = Array.isArray(p.levels) ? p.levels : [];
+          for (let i = 0; i < levels.length; i++) {
+            const lv = levels[i];
+            await supabase.from('motion_challenge_levels').insert({
+              game_id: row.id,
+              level_order: i,
+              label: lv.label || `Level ${i + 1}`,
+              rows: lv.rows,
+              cols: lv.cols,
+              grid: lv.grid,
+              max_moves: lv.maxMoves,
+            });
+          }
+
+          await ensureLinked('motion_challenge', row.id);
+          return { ok: true, saved: { ...question, id: row.id, updatedAt: row.updated_at || now } };
+        }
+
+        return { ok: false, message: 'Unsupported question type' };
+      },
+      async () => ({ ok: false, message: 'Supabase not configured' })
+    );
+  },
+
+  deleteHackathonQuestionFromSupabase: async (
+    mockTestId: string,
+    question: HackathonQuestion
+  ): Promise<{ ok: boolean; message?: string }> => {
+    return trySupabase<{ ok: boolean; message?: string }>(
+      async () => {
+        // Unlink from test
+        await supabase
+          .from('mock_test_questions')
+          .delete()
+          .eq('mock_test_id', mockTestId)
+          .eq('game_type', question.type)
+          .eq('question_ref_id', question.id);
+
+        // Delete underlying record (best-effort)
+        if (question.type === 'puzzle') {
+          await supabase.from('puzzle_questions').delete().eq('id', question.id);
+        } else if (question.type === 'switch_challenge') {
+          await supabase.from('switch_challenge_games').delete().eq('id', question.id);
+        } else if (question.type === 'grid_challenge') {
+          await supabase.from('grid_challenge_rounds').delete().eq('game_id', question.id);
+          await supabase.from('grid_challenge_games').delete().eq('id', question.id);
+        } else if (question.type === 'inductive_challenge') {
+          await supabase.from('inductive_challenge_questions').delete().eq('game_id', question.id);
+          await supabase.from('inductive_challenge_games').delete().eq('id', question.id);
+        } else if (question.type === 'motion_challenge') {
+          await supabase.from('motion_challenge_levels').delete().eq('game_id', question.id);
+          await supabase.from('motion_challenge_games').delete().eq('id', question.id);
+        }
+
+        return { ok: true };
+      },
+      async () => ({ ok: false, message: 'Supabase not configured' })
     );
   },
 };

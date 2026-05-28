@@ -77,7 +77,7 @@ export const HackathonQuestionCard: React.FC<HackathonQuestionCardProps> = ({
           <Badge variant="outline" className="gap-1">
             {question.source === 'ai' ? (
               <>
-                <Sparkles className="size-3" /> AI
+                <Sparkles className="size-3" /> Auto
               </>
             ) : (
               <>

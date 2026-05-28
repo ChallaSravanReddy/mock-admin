@@ -1,5 +1,4 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
 import {
   Settings,
   Trash2,
@@ -24,6 +23,7 @@ interface AssessmentDetailHeaderProps {
   onDelete: () => void;
   onTogglePublish: () => void;
   onPreviewExam: () => void;
+  onBack?: () => void;
 }
 
 export const AssessmentDetailHeader: React.FC<AssessmentDetailHeaderProps> = ({
@@ -33,6 +33,7 @@ export const AssessmentDetailHeader: React.FC<AssessmentDetailHeaderProps> = ({
   onDelete,
   onTogglePublish,
   onPreviewExam,
+  onBack,
 }) => {
   const totalMarks = computeTotalMarks(questions);
   const startDate = formatAssessmentDate(test.createdAt);
@@ -154,9 +155,13 @@ export const AssessmentDetailHeader: React.FC<AssessmentDetailHeaderProps> = ({
         </div>
       </div>
 
-      <Link to="/admin/mock-tests" className="text-sm text-gray-500 hover:text-gray-800">
+      <button
+        type="button"
+        onClick={onBack}
+        className="inline-flex text-sm text-gray-500 hover:text-gray-800 relative z-10"
+      >
         ← Back to all assessments
-      </Link>
+      </button>
     </div>
   );
 };

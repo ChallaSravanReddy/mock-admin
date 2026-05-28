@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react';
 import { mockTestService } from '../services';
 import { useMockTestStore } from '../store';
 import { useMockTestQuestionsStore } from '../store/mockTestQuestionsStore';
+import type { HackathonQuestion } from '../types/hackathon';
 import type { GameTypeId } from '../constants/gameTypes';
 import { AssessmentDetailHeader } from '../components/mockTest/AssessmentDetailHeader';
 import { AssessmentRoundsPanel } from '../components/mockTest/AssessmentRoundsPanel';
@@ -18,6 +19,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useForm } from 'react-hook-form';
 import { GameTypeSelector } from '../components/mockTest/gameTypeLegacyConfig';
+import { AddQuestionModal } from '../components/hackathon/AddQuestionModal';
+
+const EMPTY_QUESTIONS: HackathonQuestion[] = [];
 
 interface EditFormData {
   title: string;
@@ -31,36 +35,60 @@ export const MockTestDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { mockTests, updateMockTest, deleteMockTest, togglePublishStatus } = useMockTestStore();
-  const questions = useMockTestQuestionsStore((s) => (id ? s.byTestId[id] : undefined) ?? []);
+  const questions = useMockTestQuestionsStore((s) => (id ? s.byTestId[id] : undefined) ?? EMPTY_QUESTIONS);
+  const setQuestions = useMockTestQuestionsStore((s) => s.setQuestions);
 
   const [test, setTest] = useState(mockTests.find((t) => t.id === id) ?? null);
   const [loading, setLoading] = useState(!test);
   const [editOpen, setEditOpen] = useState(false);
   const [selectedGameTypes, setSelectedGameTypes] = useState<GameTypeId[]>([]);
+  const [didImport, setDidImport] = useState(false);
+  const [questionModalOpen, setQuestionModalOpen] = useState(false);
+  const [editingQuestion, setEditingQuestion] = useState<HackathonQuestion | null>(null);
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<EditFormData>();
 
   useEffect(() => {
     if (!id) return;
     const load = async () => {
-      setLoading(true);
+      const alreadyHave = Boolean(test && test.id === id);
+      if (!alreadyHave) setLoading(true);
       try {
-        let t = mockTests.find((x) => x.id === id) ?? null;
+        let t = mockTests.find((x) => x.id === id) ?? test ?? null;
         if (!t) t = await mockTestService.getMockTestById(id);
         if (t) {
           setTest(t);
           setSelectedGameTypes((t.enabledGameTypes ?? []) as GameTypeId[]);
         }
       } finally {
-        setLoading(false);
+        if (!alreadyHave) setLoading(false);
       }
     };
     load();
-  }, [id, mockTests]);
+  }, [id]); // don't flicker loader when mockTests updates (e.g. question count sync)
+
+  // If this browser has no local stored questions for this test, try importing legacy/Supabase-linked ones
+  useEffect(() => {
+    if (!id) return;
+    if (didImport) return;
+    if (questions.length > 0) return;
+    const run = async () => {
+      try {
+        const imported = await mockTestService.getHackathonQuestionsForTest(id);
+        if (imported.length > 0) {
+          setQuestions(id, imported);
+        }
+      } finally {
+        setDidImport(true);
+      }
+    };
+    run();
+  }, [id, didImport, questions.length, setQuestions]);
 
   const syncQuestionCount = useCallback(
     async (count: number) => {
       if (!test || !id) return;
+      if ((test.totalQuestions ?? 0) === count) return;
       updateMockTest(id, { totalQuestions: count });
       try {
         await mockTestService.updateMockTest(id, { totalQuestions: count });
@@ -137,6 +165,16 @@ export const MockTestDetailPage: React.FC = () => {
     ? test.enabledGameTypes
     : selectedGameTypes) as GameTypeId[];
 
+  const openAddQuestions = () => {
+    setEditingQuestion(null);
+    setQuestionModalOpen(true);
+  };
+
+  const openEditQuestion = (q: HackathonQuestion) => {
+    setEditingQuestion(q);
+    setQuestionModalOpen(true);
+  };
+
   return (
     <div className="max-w-5xl mx-auto space-y-8 pb-12">
       <AssessmentDetailHeader
@@ -146,12 +184,27 @@ export const MockTestDetailPage: React.FC = () => {
         onDelete={handleDelete}
         onTogglePublish={handleTogglePublish}
         onPreviewExam={() => navigate(`/admin/mock-tests/${id}/view`)}
+        onBack={() => navigate('/admin/mock-tests')}
       />
 
       <AssessmentRoundsPanel
         testId={id}
         enabledTypes={enabledTypes}
         onQuestionsChange={syncQuestionCount}
+        onAddQuestions={openAddQuestions}
+        onEditQuestion={openEditQuestion}
+      />
+
+      <AddQuestionModal
+        open={questionModalOpen}
+        onOpenChange={(open) => {
+          setQuestionModalOpen(open);
+          if (!open) setEditingQuestion(null);
+        }}
+        editQuestion={editingQuestion}
+        mockTestId={id}
+        allowedTypes={enabledTypes}
+        context="mock-test"
       />
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
