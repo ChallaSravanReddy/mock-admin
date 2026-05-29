@@ -8,6 +8,8 @@ import {
   SHAPE_TYPES,
   type InductiveChallengeQuestion,
   type ShapeGrid,
+  type ShapeType,
+  type ShapeColor,
 } from '../types/inductiveChallenge';
 import {
   CELL_COLORS,
@@ -147,38 +149,297 @@ export function generateGridPayload() {
 }
 
 export function generateInductiveQuestion(index: number): InductiveChallengeQuestion {
-  const gridA = createEmptyGrid();
-  const gridB = createEmptyGrid();
-  const fill = (grid: ShapeGrid) => {
-    const n = 3 + Math.floor(Math.random() * 3);
-    let placed = 0;
-    while (placed < n) {
-      const r = Math.floor(Math.random() * 3);
-      const c = Math.floor(Math.random() * 3);
-      if (!grid[r][c]) {
-        grid[r][c] = {
-          shape: SHAPE_TYPES[Math.floor(Math.random() * SHAPE_TYPES.length)],
-          color: SHAPE_COLORS[Math.floor(Math.random() * SHAPE_COLORS.length)],
-        };
-        placed++;
+  const staticRules = [
+    {
+      name: 'One column is completely uniform in shape and color, while the other two columns contain three distinct shape/color types with exactly two occurrences each.',
+      apply: (grid: ShapeGrid) => {
+        const shapes: ShapeType[] = ['circle', 'square', 'triangle', 'cross'].sort(() => Math.random() - 0.5) as ShapeType[];
+        const colors: ShapeColor[] = ['purple', 'green', 'blue', 'orange'].sort(() => Math.random() - 0.5) as ShapeColor[];
+        
+        const uniformCol = Math.floor(Math.random() * 3);
+        const otherCols = [0, 1, 2].filter(c => c !== uniformCol);
+        
+        for (let r = 0; r < 3; r++) {
+          grid[r][uniformCol] = { shape: shapes[0], color: colors[0] };
+        }
+        
+        const colAShapes: ShapeType[] = [shapes[1], shapes[1], shapes[2]].sort(() => Math.random() - 0.5);
+        const colAColors: ShapeColor[] = [colors[1], colors[1], colors[2]].sort(() => Math.random() - 0.5);
+        for (let r = 0; r < 3; r++) {
+          grid[r][otherCols[0]] = { shape: colAShapes[r], color: colAColors[r] };
+        }
+        
+        const colBShapes: ShapeType[] = [shapes[3], shapes[3], shapes[2]].sort(() => Math.random() - 0.5);
+        const colBColors: ShapeColor[] = [colors[3], colors[3], colors[2]].sort(() => Math.random() - 0.5);
+        for (let r = 0; r < 3; r++) {
+          grid[r][otherCols[1]] = { shape: colBShapes[r], color: colBColors[r] };
+        }
+      },
+      check: (grid: ShapeGrid) => {
+        let uniformCol = -1;
+        for (let c = 0; c < 3; c++) {
+          if (grid[0][c] && grid[1][c] && grid[2][c]) {
+            if (
+              grid[0][c]!.shape === grid[1][c]!.shape && grid[1][c]!.shape === grid[2][c]!.shape &&
+              grid[0][c]!.color === grid[1][c]!.color && grid[1][c]!.color === grid[2][c]!.color
+            ) {
+              uniformCol = c;
+              break;
+            }
+          }
+        }
+        if (uniformCol === -1) return false;
+        
+        const shapeCounts: Record<string, number> = {};
+        const colorCounts: Record<string, number> = {};
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            const item = grid[r][c];
+            if (!item) return false;
+            shapeCounts[item.shape] = (shapeCounts[item.shape] || 0) + 1;
+            colorCounts[item.color] = (colorCounts[item.color] || 0) + 1;
+          }
+        }
+        
+        const sc = Object.values(shapeCounts).sort();
+        const cc = Object.values(colorCounts).sort();
+        return (
+          sc.length === 4 && sc[0] === 2 && sc[1] === 2 && sc[2] === 2 && sc[3] === 3 &&
+          cc.length === 4 && cc[0] === 2 && cc[1] === 2 && cc[2] === 2 && cc[3] === 3
+        );
+      },
+      break: (grid: ShapeGrid) => {
+        const shapes: ShapeType[] = ['circle', 'square', 'triangle', 'cross'];
+        const colors: ShapeColor[] = ['purple', 'green', 'blue', 'orange'];
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            grid[r][c] = { shape: shapes[(r + c) % 4], color: colors[(r + c) % 4] };
+          }
+        }
+      }
+    },
+    {
+      name: 'Each row and column contains exactly one Circle, one Square, and one Triangle, with no duplicates of shapes or colors in any line.',
+      apply: (grid: ShapeGrid) => {
+        const shapes: ShapeType[] = ['circle', 'square', 'triangle'].sort(() => Math.random() - 0.5) as ShapeType[];
+        const colors: ShapeColor[] = ['red', 'blue', 'green'].sort(() => Math.random() - 0.5) as ShapeColor[];
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            const idx = (r + c) % 3;
+            grid[r][c] = { shape: shapes[idx], color: colors[idx] };
+          }
+        }
+      },
+      check: (grid: ShapeGrid) => {
+        for (let r = 0; r < 3; r++) {
+          const rowShapes = new Set<string>();
+          const rowColors = new Set<string>();
+          for (let c = 0; c < 3; c++) {
+            const item = grid[r][c];
+            if (!item) return false;
+            rowShapes.add(item.shape);
+            rowColors.add(item.color);
+          }
+          if (rowShapes.size !== 3 || rowColors.size !== 3) return false;
+        }
+        for (let c = 0; c < 3; c++) {
+          const colShapes = new Set<string>();
+          const colColors = new Set<string>();
+          for (let r = 0; r < 3; r++) {
+            const item = grid[r][c];
+            if (!item) return false;
+            colShapes.add(item.shape);
+            colColors.add(item.color);
+          }
+          if (colShapes.size !== 3 || colColors.size !== 3) return false;
+        }
+        return true;
+      },
+      break: (grid: ShapeGrid) => {
+        const shapes: ShapeType[] = ['circle', 'square', 'triangle'];
+        const colors: ShapeColor[] = ['red', 'blue', 'green'];
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            grid[r][c] = { shape: shapes[c], color: colors[c] };
+          }
+        }
+      }
+    },
+    {
+      name: 'Left and Right columns are identical (symmetrical) in both shape and color, while the center column alternates shapes.',
+      apply: (grid: ShapeGrid) => {
+        const borderShapes: ShapeType[] = ['circle', 'triangle', 'cross'].sort(() => Math.random() - 0.5) as ShapeType[];
+        const borderColors: ShapeColor[] = ['blue', 'orange', 'purple'].sort(() => Math.random() - 0.5) as ShapeColor[];
+        const centerShapes: ShapeType[] = ['square', 'circle'].sort(() => Math.random() - 0.5) as ShapeType[];
+        
+        for (let r = 0; r < 3; r++) {
+          grid[r][0] = { shape: borderShapes[r], color: borderColors[r] };
+          grid[r][2] = { shape: borderShapes[r], color: borderColors[r] };
+          grid[r][1] = { shape: r % 2 === 0 ? centerShapes[0] : centerShapes[1], color: 'green' };
+        }
+      },
+      check: (grid: ShapeGrid) => {
+        for (let r = 0; r < 3; r++) {
+          if (!grid[r][0] || !grid[r][1] || !grid[r][2]) return false;
+          if (grid[r][0]?.shape !== grid[r][2]?.shape || grid[r][0]?.color !== grid[r][2]?.color) return false;
+        }
+        return (
+          grid[0][1]?.shape === grid[2][1]?.shape &&
+          grid[0][1]?.shape !== grid[1][1]?.shape
+        );
+      },
+      break: (grid: ShapeGrid) => {
+        for (let r = 0; r < 3; r++) {
+          grid[r][0] = { shape: 'circle', color: 'blue' };
+          grid[r][1] = { shape: 'square', color: 'green' };
+          grid[r][2] = { shape: 'triangle', color: 'blue' };
+        }
+      }
+    },
+    {
+      name: 'All shapes of the same type must share the same color (e.g., all circles are red, all squares are blue).',
+      apply: (grid: ShapeGrid) => {
+        const shapes: ShapeType[] = ['circle', 'square', 'triangle', 'cross'];
+        const colors: ShapeColor[] = ['red', 'blue', 'orange', 'green'];
+        
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            const idx = Math.floor(Math.random() * 4);
+            grid[r][c] = { shape: shapes[idx], color: colors[idx] };
+          }
+        }
+      },
+      check: (grid: ShapeGrid) => {
+        const map: Record<string, string> = {};
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            const item = grid[r][c];
+            if (!item) return false;
+            if (!map[item.shape]) {
+              map[item.shape] = item.color;
+            } else if (map[item.shape] !== item.color) {
+              return false;
+            }
+          }
+        }
+        return Object.keys(map).length >= 2;
+      },
+      break: (grid: ShapeGrid) => {
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            grid[r][c] = { shape: 'circle', color: 'red' };
+          }
+        }
+        grid[0][0] = { shape: 'circle', color: 'blue' };
+      }
+    },
+    {
+      name: 'Top-left to bottom-right diagonal cells must be circles, and all other cells must be squares.',
+      apply: (grid: ShapeGrid) => {
+        const colorDiag: ShapeColor = 'purple';
+        const colorOff: ShapeColor = 'green';
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            grid[r][c] = {
+              shape: r === c ? 'circle' : 'square',
+              color: r === c ? colorDiag : colorOff
+            };
+          }
+        }
+      },
+      check: (grid: ShapeGrid) => {
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            const item = grid[r][c];
+            if (!item) return false;
+            if (r === c) {
+              if (item.shape !== 'circle') return false;
+            } else {
+              if (item.shape !== 'square') return false;
+            }
+          }
+        }
+        return true;
+      },
+      break: (grid: ShapeGrid) => {
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            grid[r][c] = { shape: 'square', color: 'green' };
+          }
+        }
+      }
+    },
+    {
+      name: 'The grid contains exactly three circles, three squares, and three triangles.',
+      apply: (grid: ShapeGrid) => {
+        const list: ShapeType[] = ['triangle', 'triangle', 'triangle', 'square', 'square', 'square', 'circle', 'circle', 'circle']
+          .sort(() => Math.random() - 0.5) as ShapeType[];
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            grid[r][c] = {
+              shape: list[r * 3 + c],
+              color: SHAPE_COLORS[Math.floor(Math.random() * SHAPE_COLORS.length)]
+            };
+          }
+        }
+      },
+      check: (grid: ShapeGrid) => {
+        let tri = 0, sq = 0, ci = 0;
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            const sh = grid[r][c]?.shape;
+            if (sh === 'triangle') tri++;
+            else if (sh === 'square') sq++;
+            else if (sh === 'circle') ci++;
+          }
+        }
+        return tri === 3 && sq === 3 && ci === 3;
+      },
+      break: (grid: ShapeGrid) => {
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            grid[r][c] = { shape: 'triangle', color: 'red' };
+          }
+        }
       }
     }
-  };
-  fill(gridA);
-  fill(gridB);
+  ];
 
-  const options = ['A', 'B', 'C', 'D'].map((id) => {
-    const g = createEmptyGrid();
-    fill(g);
-    return { id, grid: g, isCorrect: id === 'A' || id === 'C' };
+  const rule = staticRules[Math.floor(Math.random() * staticRules.length)];
+
+  const gridA = createEmptyGrid();
+  rule.apply(gridA);
+
+  const gridB = createEmptyGrid();
+  rule.apply(gridB);
+
+  const correct1 = createEmptyGrid();
+  rule.apply(correct1);
+
+  const correct2 = createEmptyGrid();
+  rule.apply(correct2);
+
+  const wrong1 = createEmptyGrid();
+  rule.break(wrong1);
+
+  const wrong2 = createEmptyGrid();
+  rule.break(wrong2);
+
+  const optionsGrids = [correct1, correct2, wrong1, wrong2].sort(() => Math.random() - 0.5);
+
+  const options = optionsGrids.map((g, idx) => {
+    const id = String.fromCharCode(65 + idx);
+    return { id, grid: g, isCorrect: g === correct1 || g === correct2 };
   });
 
+  const correctOptionIds = options.filter(o => o.isCorrect).map(o => o.id);
+
   return {
-    id: `q-${index}-${uid()}`,
+    id: `q-${index}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     examplePair: { gridA, gridB },
     options,
-    correctOptionIds: ['A', 'C'],
-    rule: 'AI-generated pattern rule',
+    correctOptionIds,
+    rule: rule.name,
     displayDurationMs: 30000,
   };
 }

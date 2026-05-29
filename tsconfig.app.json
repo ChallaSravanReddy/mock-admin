@@ -17,10 +17,8 @@
 
     /* Linting */
     "strict": true,
-    "ignoreDeprecations": "6.0",
     "noFallthroughCasesInSwitch": true,
 
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
     }
