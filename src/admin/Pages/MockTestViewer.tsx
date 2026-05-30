@@ -12,6 +12,8 @@ import { normalizeSwitchQuestion } from '../lib/normalizeSwitchQuestion';
 import { normalizeGridQuestion } from '../lib/normalizeGridQuestion';
 import { normalizeMotionQuestion } from '../lib/normalizeMotionQuestion';
 import { SwitchSymbolRow } from '../components/switch/SwitchSymbolRow';
+import { generateHackathonQuestion } from '../lib/hackathonGenerators';
+import { hackathonToViewerQuestion } from '../lib/hackathonToViewer';
 
 // ─── Mock question bank (placeholder — replace with Supabase queries) ─────────
 const MOCK_QUESTION_BANK: Record<string, any[]> = {
@@ -72,29 +74,21 @@ const MOCK_QUESTION_BANK: Record<string, any[]> = {
       type: 'inductive_challenge',
       title: 'Inductive Q1',
       description: 'Two grids show a rule. Which two of the four options follow the same rule?',
-      correct: ['A', 'C'],
+      correct: [],
       questionsData: [
         {
           id: 'iq1',
           displayDurationMs: 30000,
-          correctOptionIds: ['A', 'C'],
+          correctOptionIds: [],
           examplePair: {
-            gridA: [
-              [{ shape: 'square', color: 'green' }, { shape: 'circle', color: 'purple' }, null],
-              [null, { shape: 'triangle', color: 'blue' }, { shape: 'cross', color: 'red' }],
-              [{ shape: 'circle', color: 'orange' }, null, { shape: 'square', color: 'purple' }],
-            ],
-            gridB: [
-              [{ shape: 'circle', color: 'purple' }, { shape: 'triangle', color: 'blue' }, { shape: 'square', color: 'green' }],
-              [{ shape: 'cross', color: 'red' }, null, { shape: 'circle', color: 'orange' }],
-              [null, { shape: 'square', color: 'purple' }, { shape: 'triangle', color: 'blue' }],
-            ],
+            gridA: [],
+            gridB: [],
           },
           options: [
-            { id: 'A', isCorrect: true, grid: [[{ shape: 'square', color: 'green' }, null, null], [null, null, null], [null, null, null]] },
-            { id: 'B', isCorrect: false, grid: [[null, { shape: 'cross', color: 'red' }, null], [null, null, null], [null, null, null]] },
-            { id: 'C', isCorrect: true, grid: [[{ shape: 'triangle', color: 'blue' }, { shape: 'circle', color: 'orange' }, null], [null, null, null], [null, null, null]] },
-            { id: 'D', isCorrect: false, grid: [[null, null, { shape: 'cross', color: 'green' }], [null, null, null], [null, null, null]] },
+            { id: 'A', isCorrect: false, grid: [] },
+            { id: 'B', isCorrect: false, grid: [] },
+            { id: 'C', isCorrect: false, grid: [] },
+            { id: 'D', isCorrect: false, grid: [] },
           ],
         },
       ],
@@ -1315,6 +1309,88 @@ export const MockTestViewer: React.FC = () => {
   const [timeLeft, setTimeLeft] = useState((test?.durationMinutes ?? 30) * 60);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Round-wise state variables
+  const [rounds, setRounds] = useState<any[]>([]);
+  const [activeRoundIdx, setActiveRoundIdx] = useState<number | null>(null);
+  const [showingRules, setShowingRules] = useState(false);
+  const [completedRounds, setCompletedRounds] = useState<Record<string, boolean>>({});
+
+  const formatDate = (iso: string | undefined) => {
+    if (!iso) return '—';
+    try {
+      return new Date(iso).toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      });
+    } catch {
+      return '—';
+    }
+  };
+
+  const getGameRules = (type: string) => {
+    switch (type) {
+      case 'puzzle':
+        return {
+          title: 'Puzzle Reasoning',
+          instructions: [
+            'You will be shown a grid (3x3 or 4x4) with one cell missing, marked by a question mark (?).',
+            'Analyze the symbols and find the underlying logical pattern across the rows and columns.',
+            'Select the correct symbol from the given options that completes the grid.',
+            'Click "Submit Answer" to save your selection for that question.'
+          ]
+        };
+      case 'switch_challenge':
+        return {
+          title: 'Switch Challenge',
+          instructions: [
+            'Observe the top row (Input Symbols) and the bottom row (Output Symbols).',
+            'Find the correct digit ordering code (e.g. 3142) that maps the input positions to the output positions.',
+            'This is a timed challenge. Select your answer and proceed before the timer runs out!'
+          ]
+        };
+      case 'grid_challenge':
+        return {
+          title: 'Grid Challenge',
+          instructions: [
+            'This test consists of multiple interleaved rounds.',
+            'Dot Phase: Memorize the position of the blinking yellow dot (shown for 2 seconds).',
+            'Symmetry Phase: Answer whether the left and right grids are symmetric (identical).',
+            'Recall Phase: Click the exact grid cell where the blinking yellow dot appeared.'
+          ]
+        };
+      case 'inductive_challenge':
+        return {
+          title: 'Inductive Challenge',
+          instructions: [
+            'An example pair demonstrating the grid transformation rule is shown at the top.',
+            'Study the example pair to find the transformation rule.',
+            'Select exactly two options from the choices that follow the same rule.',
+            'Click "Submit Answer" to finalize your choice.'
+          ]
+        };
+      case 'motion_challenge':
+        return {
+          title: 'Motion Challenge',
+          instructions: [
+            'You must guide the red ball into the black hole.',
+            'Click on a colored block or the ball, then click an adjacent empty cell to slide it.',
+            'Try to solve the puzzle in as few moves as possible, staying within the maximum allowed moves.',
+            'Use "Undo" to reverse your last move, or "Reset" to start the level over.'
+          ]
+        };
+      default:
+        return {
+          title: 'Game Round',
+          instructions: [
+            'Solve the questions in this round.',
+            'Read the questions carefully and select the correct option.',
+            'Click "Next" to continue.'
+          ]
+        };
+    }
+  };
+
   useEffect(() => {
     if (testFromStore) setTest(testFromStore);
   }, [testFromStore]);
@@ -1341,18 +1417,53 @@ export const MockTestViewer: React.FC = () => {
         const data = await mockTestService.getQuestionsForTest(id);
         if (!active) return;
 
-        const enabledTypes = (testMeta?.enabledGameTypes ?? []) as string[];
-        const filtered =
-          enabledTypes.length > 0
-            ? data.filter((q) => enabledTypes.includes(q.type))
-            : data;
+        const enabledTypes = (testMeta?.enabledGameTypes && testMeta.enabledGameTypes.length > 0)
+          ? (testMeta.enabledGameTypes as string[])
+          : Array.from(new Set(data.map((q: any) => q.type)));
 
-        setQuestions(filtered);
+        const allPaddedQuestions: any[] = [];
+        const roundsList: any[] = [];
+
+        enabledTypes.forEach((type) => {
+          const typeQuestions = data.filter((q: any) => q.type === type);
+          const padded = [...typeQuestions];
+          
+          while (padded.length < 5) {
+            try {
+              const generated = generateHackathonQuestion(type as any, 'manual');
+              const viewerQ = hackathonToViewerQuestion(generated);
+              padded.push(viewerQ);
+            } catch (err) {
+              console.error(`Error generating fallback question for ${type}:`, err);
+              const fallbackPool = MOCK_QUESTION_BANK[type] || [];
+              if (fallbackPool.length > 0) {
+                const randomFallback = fallbackPool[Math.floor(Math.random() * fallbackPool.length)];
+                padded.push({
+                  ...randomFallback,
+                  id: `fallback-${type}-${Date.now()}-${Math.random()}`
+                });
+              } else {
+                break;
+              }
+            }
+          }
+
+          allPaddedQuestions.push(...padded);
+
+          const cfg = GAME_TYPE_CONFIG.find((g) => g.id === type);
+          roundsList.push({
+            type,
+            label: cfg ? cfg.label : type,
+            questions: padded,
+          });
+        });
+
+        setQuestions(allPaddedQuestions);
+        setRounds(roundsList);
         setCurrent(0);
-        if (filtered.length === 0 && data.length > 0) {
-          setLoadError('Questions exist but none match this test’s enabled game types. Edit the test and check game types.');
-        } else if (filtered.length === 0) {
-          setLoadError('No questions in this test yet. Add questions from Mock Tests → Edit test.');
+
+        if (roundsList.length === 0) {
+          setLoadError('No rounds are configured for this mock test.');
         }
       } catch (err) {
         console.error('Error loading test:', err);
@@ -1404,10 +1515,18 @@ export const MockTestViewer: React.FC = () => {
 
   if (submitted) return (
     <ScoreScreen questions={questions} answers={answers} testTitle={test.title}
-      onRetry={() => { setSubmitted(false); setAnswers({}); setCurrent(0); setTimeLeft(test.durationMinutes * 60); }} />
+      onRetry={() => {
+        setSubmitted(false);
+        setAnswers({});
+        setCurrent(0);
+        setTimeLeft(test.durationMinutes * 60);
+        setActiveRoundIdx(null);
+        setShowingRules(false);
+        setCompletedRounds({});
+      }} />
   );
 
-  if (!isLoading && questions.length === 0) {
+  if (!isLoading && rounds.length === 0) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50 p-6">
         <div className="max-w-md text-center space-y-4">
@@ -1419,10 +1538,11 @@ export const MockTestViewer: React.FC = () => {
     );
   }
 
-  const q = questions[current];
+  const activeRound = activeRoundIdx !== null ? rounds[activeRoundIdx] : null;
+  const q = activeRound ? activeRound.questions[current] : null;
   const mm = String(Math.floor(timeLeft / 60)).padStart(2, '0');
   const ss = String(timeLeft % 60).padStart(2, '0');
-  const progress = questions.length ? ((current + 1) / questions.length) * 100 : 0;
+  const progress = activeRound && activeRound.questions.length ? ((current + 1) / activeRound.questions.length) * 100 : 0;
 
   const setAnswer = (val: any) => {
     if (!q) return;
@@ -1430,14 +1550,15 @@ export const MockTestViewer: React.FC = () => {
   };
 
   const renderQuestion = () => {
-    if (!q) return <p className="text-gray-400 text-center py-10">No questions in this section.</p>;
+    if (!activeRound || !q) return <p className="text-gray-400 text-center py-10">No questions in this section.</p>;
     const questionNumber = current + 1;
-    const totalQuestionCount = questions.length;
+    const totalQuestionCount = activeRound.questions.length;
     const chrome: QuestionChromeProps = { questionNumber, totalQuestions: totalQuestionCount };
     switch (q.type) {
       case 'puzzle':
         return (
           <PuzzleQuestion
+            key={q.id}
             q={q}
             answer={answers[q.id] ?? ''}
             onAnswer={setAnswer}
@@ -1447,6 +1568,7 @@ export const MockTestViewer: React.FC = () => {
       case 'switch_challenge':
         return (
           <SwitchQuestion
+            key={q.id}
             q={q}
             answer={answers[q.id] ?? ''}
             onAnswer={setAnswer}
@@ -1456,6 +1578,7 @@ export const MockTestViewer: React.FC = () => {
       case 'grid_challenge':
         return (
           <GridChallengeQuestion
+            key={q.id}
             q={q}
             answer={answers[q.id]}
             onAnswer={setAnswer}
@@ -1465,6 +1588,7 @@ export const MockTestViewer: React.FC = () => {
       case 'inductive_challenge':
         return (
           <InductiveQuestion
+            key={q.id}
             q={q}
             answer={answers[q.id] ?? []}
             onAnswer={setAnswer}
@@ -1474,6 +1598,7 @@ export const MockTestViewer: React.FC = () => {
       case 'motion_challenge':
         return (
           <MotionQuestion
+            key={q.id}
             q={q}
             answer={answers[q.id]}
             onAnswer={setAnswer}
@@ -1485,15 +1610,211 @@ export const MockTestViewer: React.FC = () => {
     }
   };
 
-  const cfg = q ? GAME_TYPE_CONFIG.find(g => g.id === q.type) : null;
+  const startRoundFlow = (idx: number) => {
+    setActiveRoundIdx(idx);
+    setShowingRules(true);
+    setCurrent(0);
+  };
 
+  const cfg = q ? GAME_TYPE_CONFIG.find(g => g.id === q.type) : null;
+  const activeRoundCfg = activeRound ? GAME_TYPE_CONFIG.find(g => g.id === activeRound.type) : null;
+  const rules = activeRound ? getGameRules(activeRound.type) : null;
+
+  // ─── Render Rounds Timeline UI ────────────────────────────────────────────────
+  if (activeRoundIdx === null) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        {/* Header / Top bar */}
+        <div className="bg-white border-b px-6 py-4 flex items-center justify-between flex-shrink-0 shadow-sm">
+          <div>
+            <h1 className="font-extrabold text-xl text-slate-800">{test.title}</h1>
+            <p className="text-slate-500 text-xs mt-0.5">{rounds.length} rounds · {questions.length} total questions</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className={`flex items-center gap-2 font-mono text-lg font-bold px-4 py-2 rounded-xl transition-all ${timeLeft < 120 ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-100 text-slate-700 border'}`}>
+              <Clock size={18} /> {mm}:{ss}
+            </div>
+            <Button
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded-xl shadow transition-all"
+              onClick={() => { if (confirm('Submit the entire test?')) setSubmitted(true); }}
+            >
+              <Send size={15} className="mr-1.5" /> Submit Assessment
+            </Button>
+          </div>
+        </div>
+
+        {/* Timeline block */}
+        <div className="max-w-4xl w-full mx-auto p-8 space-y-6 flex-1">
+          <div className="border-b pb-4">
+            <h2 className="text-2xl font-bold text-gray-900">Rounds</h2>
+            <p className="text-sm text-gray-500">Complete each round to finish the assessment.</p>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-8 relative">
+            <div className="relative pl-12 space-y-6">
+              {/* Vertical timeline line */}
+              <div className="absolute left-[15px] top-4 bottom-4 w-[2px] bg-gray-200" />
+
+              {rounds.map((round, idx) => {
+                const isCompleted = completedRounds[round.type];
+                const roundNum = idx + 1;
+                const testDateStr = formatDate(test.createdAt);
+
+                return (
+                  <div key={round.type} className="relative flex items-center justify-between group">
+                    {/* Circle number */}
+                    <div
+                      className={`absolute -left-[45px] w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-all z-10 bg-[#8be040] text-white shadow-sm`}
+                    >
+                      {roundNum}
+                    </div>
+
+                    {/* Round Details Card */}
+                    <div className="flex-1 ml-4 bg-[#f8f9fa] rounded-2xl p-6 border border-gray-100 flex items-center justify-between transition-all hover:bg-gray-50/80">
+                      <div className="space-y-2">
+                        <h3 className="font-bold text-gray-900 text-base">{round.label}</h3>
+                        <div className="flex gap-x-12 text-xs text-gray-500 font-medium">
+                          <span>Start date: {testDateStr}</span>
+                          <span>End date: {testDateStr}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col items-center gap-1">
+                        {isCompleted ? (
+                          <>
+                            <Button
+                              disabled
+                              className="bg-[#d2edd2] text-[#4d7d4d] font-bold rounded-full px-6 py-2 text-xs cursor-not-allowed border border-green-200"
+                            >
+                              Completed
+                            </Button>
+                            <span className="text-[10px] text-gray-400 font-semibold">Round ended</span>
+                          </>
+                        ) : (
+                          <>
+                            <Button
+                              onClick={() => startRoundFlow(idx)}
+                              className="bg-[#c2f0ad] hover:bg-[#b2e59b] text-[#558245] font-bold rounded-full px-6 py-2 text-xs transition-all border border-[#afd99b]/30 shadow-sm"
+                            >
+                              Take Test
+                            </Button>
+                            <span className="text-[10px] text-green-600 font-semibold">Active</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Render Rules Screen ──────────────────────────────────────────────────────
+  if (showingRules && rules && activeRound) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        {/* Header / Top bar */}
+        <div className="bg-white border-b px-6 py-4 flex items-center justify-between flex-shrink-0 shadow-sm">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-slate-600 hover:text-slate-900"
+              onClick={() => {
+                setActiveRoundIdx(null);
+                setShowingRules(false);
+              }}
+            >
+              <ChevronLeft size={16} className="mr-1" /> Exit Round
+            </Button>
+            <div className="h-5 w-[1px] bg-slate-200" />
+            <h1 className="font-extrabold text-xl text-slate-800">{test.title}</h1>
+          </div>
+          <div className={`flex items-center gap-2 font-mono text-lg font-bold px-4 py-2 rounded-xl transition-all ${timeLeft < 120 ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-100 text-slate-700 border'}`}>
+            <Clock size={18} /> {mm}:{ss}
+          </div>
+        </div>
+
+        <div className="flex-1 flex items-center justify-center p-6 bg-slate-50/50">
+          <Card className="max-w-xl w-full shadow-lg border border-slate-100 rounded-2xl overflow-hidden bg-white">
+            <CardHeader className="bg-slate-900 text-white p-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-slate-800 rounded-xl">
+                  {activeRoundCfg?.icon}
+                </div>
+                <div>
+                  <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Round {activeRoundIdx + 1} rules</span>
+                  <CardTitle className="text-xl font-extrabold mt-0.5">{rules.title}</CardTitle>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-6 space-y-6">
+              <div className="space-y-4">
+                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Instructions:</h3>
+                <ul className="space-y-3">
+                  {rules.instructions.map((inst, index) => (
+                    <li key={index} className="flex items-start gap-2.5 text-sm text-slate-600 leading-relaxed">
+                      <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center text-xs font-bold mt-0.5 flex-shrink-0">
+                        {index + 1}
+                      </span>
+                      <span>{inst}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              
+              <div className="bg-amber-50 border border-amber-200/50 rounded-xl p-4 text-xs text-amber-800 flex items-start gap-2.5">
+                <Zap size={16} className="mt-0.5 text-amber-600 flex-shrink-0 animate-pulse" />
+                <div>
+                  <strong className="font-bold">Important Info:</strong>
+                  <p className="mt-0.5 leading-relaxed text-amber-700">
+                    This round contains <span className="font-semibold">{activeRound.questions.length} questions</span>. Once you start, you can navigate between questions in this round, but you must complete them before finalizing the round.
+                  </p>
+                </div>
+              </div>
+
+              <Button
+                onClick={() => setShowingRules(false)}
+                className="w-full py-6 text-base font-bold bg-[#8be040] hover:bg-[#7bc835] text-white shadow-md rounded-xl transition-all active:scale-[0.98]"
+              >
+                Start Round
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Render Active Question Flow ──────────────────────────────────────────────
   return (
     <div className="flex flex-col h-screen bg-gray-50">
       {/* Top bar */}
       <div className="bg-slate-900 text-white px-6 py-3 flex items-center justify-between flex-shrink-0">
-        <div>
-          <h1 className="font-bold text-lg">{test.title}</h1>
-          <p className="text-slate-400 text-xs">{questions.length} questions</p>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-slate-300 hover:text-white"
+            onClick={() => {
+              if (confirm('Return to Rounds list? Your answers will be saved.')) {
+                setActiveRoundIdx(null);
+                setShowingRules(false);
+                setCurrent(0);
+              }
+            }}
+          >
+            <ChevronLeft size={16} className="mr-1" /> Back to Rounds
+          </Button>
+          <div className="h-5 w-[1px] bg-slate-700" />
+          <div>
+            <h1 className="font-bold text-lg">{test.title}</h1>
+            <p className="text-slate-400 text-xs">{activeRound?.label || 'Active Round'}</p>
+          </div>
         </div>
         <div className={`flex items-center gap-2 font-mono text-xl font-bold px-4 py-2 rounded-lg ${timeLeft < 120 ? 'bg-red-600 animate-pulse' : 'bg-slate-700'}`}>
           <Clock size={18} /> {mm}:{ss}
@@ -1510,31 +1831,36 @@ export const MockTestViewer: React.FC = () => {
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Left nav */}
-        <div className="w-56 bg-white border-r overflow-y-auto flex-shrink-0 hidden lg:block">
-          <div className="p-3 border-b bg-gray-50">
-            <p className="text-xs font-semibold text-gray-500 uppercase">Questions</p>
+        {/* Left nav - scoped to current round */}
+        {activeRound && (
+          <div className="w-56 bg-white border-r overflow-y-auto flex-shrink-0 hidden lg:block">
+            <div className="p-3 border-b bg-gray-50 flex items-center justify-between">
+              <p className="text-xs font-semibold text-gray-500 uppercase">Questions</p>
+              <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono">
+                {activeRound.questions.length} Qs
+              </span>
+            </div>
+            <nav className="p-2 space-y-1">
+              {activeRound.questions.map((question: any, i: number) => {
+                const qCfg = GAME_TYPE_CONFIG.find(g => g.id === question.type);
+                return (
+                  <button key={question.id} onClick={() => setCurrent(i)}
+                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${
+                      i === current ? 'bg-blue-600 text-white' :
+                      answers[question.id] !== undefined ? 'bg-green-50 text-green-800 border border-green-200' :
+                      'text-gray-600 hover:bg-gray-100'
+                    }`}>
+                    <span className="w-5 h-5 rounded-full border flex items-center justify-center text-xs font-bold flex-shrink-0">
+                      {i + 1}
+                    </span>
+                    <span className="truncate text-xs">{qCfg?.label.split(' ')[0] || 'Question'}</span>
+                    {answers[question.id] !== undefined && i !== current && <span className="ml-auto text-green-600 text-xs">✓</span>}
+                  </button>
+                );
+              })}
+            </nav>
           </div>
-          <nav className="p-2 space-y-1">
-            {questions.map((question, i) => {
-              const qCfg = GAME_TYPE_CONFIG.find(g => g.id === question.type);
-              return (
-                <button key={question.id} onClick={() => setCurrent(i)}
-                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${
-                    i === current ? 'bg-blue-600 text-white' :
-                    answers[question.id] !== undefined ? 'bg-green-50 text-green-800 border border-green-200' :
-                    'text-gray-600 hover:bg-gray-100'
-                  }`}>
-                  <span className="w-5 h-5 rounded-full border flex items-center justify-center text-xs font-bold flex-shrink-0">
-                    {i + 1}
-                  </span>
-                  <span className="truncate text-xs">{qCfg?.label.split(' ')[0]}</span>
-                  {answers[question.id] !== undefined && i !== current && <span className="ml-auto text-green-600 text-xs">✓</span>}
-                </button>
-              );
-            })}
-          </nav>
-        </div>
+        )}
 
         {/* Main question area */}
         <main className="flex-1 overflow-y-auto p-6">
@@ -1548,7 +1874,9 @@ export const MockTestViewer: React.FC = () => {
                       {cfg.icon} {cfg.label}
                     </span>
                   )}
-                  <span className="text-xs text-gray-400">Q{current + 1} of {questions.length}</span>
+                  {activeRound && (
+                    <span className="text-xs text-gray-400">Q{current + 1} of {activeRound.questions.length}</span>
+                  )}
                 </div>
                 {q && <h2 className="text-xl font-bold text-gray-900">{q.title}</h2>}
               </div>
@@ -1560,21 +1888,30 @@ export const MockTestViewer: React.FC = () => {
             </Card>
 
             {/* Navigation */}
-            <div className="flex items-center justify-between">
-              <Button variant="outline" disabled={current === 0} onClick={() => setCurrent(c => c - 1)} className="gap-1">
-                <ChevronLeft size={16} /> Previous
-              </Button>
-              <span className="text-sm text-gray-500">{current + 1} / {questions.length}</span>
-              {current < questions.length - 1 ? (
-                <Button onClick={() => setCurrent(c => c + 1)} className="gap-1">
-                  Next <ChevronRight size={16} />
+            {activeRound && (
+              <div className="flex items-center justify-between">
+                <Button variant="outline" disabled={current === 0} onClick={() => setCurrent(c => c - 1)} className="gap-1">
+                  <ChevronLeft size={16} /> Previous
                 </Button>
-              ) : (
-                <Button onClick={() => setSubmitted(true)} className="gap-1 bg-green-600 hover:bg-green-700">
-                  <Send size={16} /> Submit Test
-                </Button>
-              )}
-            </div>
+                <span className="text-sm text-gray-500">{current + 1} / {activeRound.questions.length}</span>
+                {current < activeRound.questions.length - 1 ? (
+                  <Button onClick={() => setCurrent(c => c + 1)} className="gap-1">
+                    Next <ChevronRight size={16} />
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={() => {
+                      setCompletedRounds((prev) => ({ ...prev, [activeRound.type]: true }));
+                      setActiveRoundIdx(null);
+                      setCurrent(0);
+                    }}
+                    className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                  >
+                    Finish Round <ChevronRight size={16} />
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
         </main>
       </div>

@@ -407,6 +407,74 @@ export function generateInductiveQuestion(index: number): InductiveChallengeQues
 
   const rule = staticRules[Math.floor(Math.random() * staticRules.length)];
 
+  const areGridsIdentical = (g1: ShapeGrid, g2: ShapeGrid): boolean => {
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) {
+        const cell1 = g1[r]?.[c];
+        const cell2 = g2[r]?.[c];
+        if (!cell1 && !cell2) continue;
+        if (!cell1 || !cell2) return false;
+        if (cell1.shape !== cell2.shape || cell1.color !== cell2.color) return false;
+      }
+    }
+    return true;
+  };
+
+  const generateRandomGrid = (): ShapeGrid => {
+    const grid = createEmptyGrid();
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) {
+        grid[r][c] = {
+          shape: SHAPE_TYPES[Math.floor(Math.random() * SHAPE_TYPES.length)],
+          color: SHAPE_COLORS[Math.floor(Math.random() * SHAPE_COLORS.length)],
+        };
+      }
+    }
+    return grid;
+  };
+
+  const generateWrongGrid = (otherGrids: ShapeGrid[]): ShapeGrid => {
+    let wrong = createEmptyGrid();
+    let attempts = 0;
+    while (attempts < 100) {
+      if (Math.random() < 0.5) {
+        rule.break(wrong);
+        const numMutations = 1 + Math.floor(Math.random() * 2);
+        for (let m = 0; m < numMutations; m++) {
+          const r = Math.floor(Math.random() * 3);
+          const c = Math.floor(Math.random() * 3);
+          wrong[r][c] = {
+            shape: SHAPE_TYPES[Math.floor(Math.random() * SHAPE_TYPES.length)],
+            color: SHAPE_COLORS[Math.floor(Math.random() * SHAPE_COLORS.length)],
+          };
+        }
+      } else {
+        wrong = generateRandomGrid();
+      }
+
+      if (!rule.check(wrong)) {
+        let isDuplicate = false;
+        for (const og of otherGrids) {
+          if (areGridsIdentical(wrong, og)) {
+            isDuplicate = true;
+            break;
+          }
+        }
+        if (!isDuplicate) {
+          return wrong;
+        }
+      }
+      attempts++;
+    }
+    const fallback = createEmptyGrid();
+    rule.break(fallback);
+    fallback[0][0] = {
+      shape: SHAPE_TYPES[Math.floor(Math.random() * SHAPE_TYPES.length)],
+      color: SHAPE_COLORS[Math.floor(Math.random() * SHAPE_COLORS.length)],
+    };
+    return fallback;
+  };
+
   const gridA = createEmptyGrid();
   rule.apply(gridA);
 
@@ -417,13 +485,14 @@ export function generateInductiveQuestion(index: number): InductiveChallengeQues
   rule.apply(correct1);
 
   const correct2 = createEmptyGrid();
-  rule.apply(correct2);
+  let correctAttempts = 0;
+  do {
+    rule.apply(correct2);
+    correctAttempts++;
+  } while (areGridsIdentical(correct1, correct2) && correctAttempts < 50);
 
-  const wrong1 = createEmptyGrid();
-  rule.break(wrong1);
-
-  const wrong2 = createEmptyGrid();
-  rule.break(wrong2);
+  const wrong1 = generateWrongGrid([correct1, correct2]);
+  const wrong2 = generateWrongGrid([correct1, correct2, wrong1]);
 
   const optionsGrids = [correct1, correct2, wrong1, wrong2].sort(() => Math.random() - 0.5);
 

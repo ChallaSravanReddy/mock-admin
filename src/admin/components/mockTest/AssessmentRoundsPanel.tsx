@@ -83,10 +83,14 @@ export const AssessmentRoundsPanel: React.FC<AssessmentRoundsPanelProps> = ({
                 <Icon className="size-3.5" />
                 Round {round.roundNumber}
               </span>
-              <span className="text-sm font-medium text-gray-700">{round.label}</span>
               <span className="text-xs text-gray-400">
                 ({round.questions.length} question{round.questions.length !== 1 ? 's' : ''})
               </span>
+              {round.questions.length < 5 && (
+                <span className="text-xs text-amber-600 font-medium bg-amber-50 border border-amber-200/50 px-2 py-0.5 rounded">
+                  Pads to 5 in test viewer
+                </span>
+              )}
             </div>
 
             {round.questions.length === 0 ? (
